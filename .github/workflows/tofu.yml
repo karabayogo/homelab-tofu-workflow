@@ -42,7 +42,7 @@ jobs:
       AWS_ENDPOINT_URL_OVERRIDE: ${{ secrets.GARAGE_ENDPOINT_URL_OVERRIDE }}
       AWS_EC2_METADATA_SERVICE_ENDPOINT: ""
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           path: ${{ inputs.checkout_path }}
 
@@ -84,7 +84,7 @@ jobs:
           cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
           ~/.local/bin/tofu plan -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tfplan-${{ github.run_id }}
           path: ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}/tfplan
@@ -101,7 +101,7 @@ jobs:
       AWS_ENDPOINT_URL_OVERRIDE: ${{ secrets.GARAGE_ENDPOINT_URL_OVERRIDE }}
       AWS_EC2_METADATA_SERVICE_ENDPOINT: ""
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           path: ${{ inputs.checkout_path }}
 
