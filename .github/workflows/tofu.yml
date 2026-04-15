@@ -1,0 +1,144 @@
+name: Reusable OpenTofu Apply
+
+on:
+  workflow_call:
+    inputs:
+      runner_labels:
+        type: string
+        default: '["self-hosted", "LAN", "moltbot"]'
+        description: "JSON array of runner labels"
+      tofu_version:
+        type: string
+        default: "1.11.6"
+        description: "OpenTofu version to install"
+      terraform_dir:
+        type: string
+        default: "infrastructure/terraform"
+        description: "Directory containing terraform files"
+      checkout_path:
+        type: string
+        default: "."
+        description: "Path to checkout the repo into (use '.' for top-level, or a subdirectory name)"
+    secrets:
+      PROXMOX_API_TOKEN:
+        required: true
+      PVE_SSH_PRIVATE_KEY:
+        required: true
+      GARAGE_ACCESS_KEY:
+        required: true
+      GARAGE_SECRET_KEY:
+        required: true
+      GARAGE_ENDPOINT_URL_OVERRIDE:
+        required: true
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.GARAGE_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.GARAGE_SECRET_KEY }}
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT_URL_OVERRIDE: ${{ secrets.GARAGE_ENDPOINT_URL_OVERRIDE }}
+      AWS_EC2_METADATA_SERVICE_ENDPOINT: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ${{ inputs.checkout_path }}
+
+      - name: Install OpenTofu
+        env:
+          TOFU_VERSION: ${{ inputs.tofu_version }}
+        run: |
+          curl -sLO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.tar.gz"
+          tar -xzf tofu_${TOFU_VERSION}_linux_amd64.tar.gz
+          mkdir -p ~/.local/bin
+          mv tofu ~/.local/bin/
+          chmod +x ~/.local/bin/tofu
+
+      - name: Add tofu to PATH
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Write PVE token
+        run: |
+          mkdir -p ~/.config/vm-gitops
+          echo "proxmox:" > ~/.config/vm-gitops/config.yaml
+          echo "  api_token: ${{ secrets.PROXMOX_API_TOKEN }}" >> ~/.config/vm-gitops/config.yaml
+
+      - name: Write PVE SSH key
+        run: |
+          for dir in /home/moltbot/.ssh /root/.ssh; do
+            mkdir -p "$dir"
+            chmod 700 "$dir"
+            echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$dir/pve-kai"
+            chmod 600 "$dir/pve-kai"
+          done
+
+      - name: Terraform init
+        run: |
+          cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
+          ~/.local/bin/tofu init -upgrade
+
+      - name: Terraform plan
+        run: |
+          cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
+          ~/.local/bin/tofu plan -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ github.run_id }}
+          path: ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}/tfplan
+          retention-days: 1
+
+  apply:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    environment: production
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.GARAGE_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.GARAGE_SECRET_KEY }}
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT_URL_OVERRIDE: ${{ secrets.GARAGE_ENDPOINT_URL_OVERRIDE }}
+      AWS_EC2_METADATA_SERVICE_ENDPOINT: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ${{ inputs.checkout_path }}
+
+      - name: Install OpenTofu
+        env:
+          TOFU_VERSION: ${{ inputs.tofu_version }}
+        run: |
+          curl -sLO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.tar.gz"
+          tar -xzf tofu_${TOFU_VERSION}_linux_amd64.tar.gz
+          mkdir -p ~/.local/bin
+          mv tofu ~/.local/bin/
+          chmod +x ~/.local/bin/tofu
+
+      - name: Add tofu to PATH
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Write PVE token
+        run: |
+          mkdir -p ~/.config/vm-gitops
+          echo "proxmox:" > ~/.config/vm-gitops/config.yaml
+          echo "  api_token: ${{ secrets.PROXMOX_API_TOKEN }}" >> ~/.config/vm-gitops/config.yaml
+
+      - name: Write PVE SSH key
+        run: |
+          for dir in /home/moltbot/.ssh /root/.ssh; do
+            mkdir -p "$dir"
+            chmod 700 "$dir"
+            echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$dir/pve-kai"
+            chmod 600 "$dir/pve-kai"
+          done
+
+      - name: Terraform init
+        run: |
+          cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
+          ~/.local/bin/tofu init -upgrade
+
+      - name: Terraform apply
+        run: |
+          cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
+          ~/.local/bin/tofu apply -auto-approve -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}"
