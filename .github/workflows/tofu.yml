@@ -30,6 +30,8 @@ on:
         required: true
       GARAGE_ENDPOINT_URL_OVERRIDE:
         required: true
+      K3S_TOKEN:
+        required: false
 
 jobs:
   plan:
@@ -82,7 +84,13 @@ jobs:
       - name: Terraform plan
         run: |
           cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
-          ~/.local/bin/tofu plan -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}"
+          if [ -n "${K3S_TOKEN:-}" ]; then
+            ~/.local/bin/tofu plan -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}" -var="k3s_token=${K3S_TOKEN}"
+          else
+            ~/.local/bin/tofu plan -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}"
+          fi
+        env:
+          K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
 
       - uses: actions/upload-artifact@v7
         with:
@@ -141,4 +149,10 @@ jobs:
       - name: Terraform apply
         run: |
           cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
-          ~/.local/bin/tofu apply -auto-approve -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}"
+          if [ -n "${K3S_TOKEN:-}" ]; then
+            ~/.local/bin/tofu apply -auto-approve -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}" -var="k3s_token=${K3S_TOKEN}"
+          else
+            ~/.local/bin/tofu apply -auto-approve -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}"
+          fi
+        env:
+          K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
