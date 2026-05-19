@@ -69,7 +69,7 @@ jobs:
 
       - name: Write PVE SSH key
         run: |
-          for dir in /home/moltbot/.ssh /root/.ssh; do
+          for dir in /home/moltbot/.ssh "$HOME/.ssh"; do
             mkdir -p "$dir"
             chmod 700 "$dir"
             echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$dir/pve-kai"
@@ -134,7 +134,7 @@ jobs:
 
       - name: Write PVE SSH key
         run: |
-          for dir in /home/moltbot/.ssh /root/.ssh; do
+          for dir in /home/moltbot/.ssh "$HOME/.ssh"; do
             mkdir -p "$dir"
             chmod 700 "$dir"
             echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$dir/pve-kai"
