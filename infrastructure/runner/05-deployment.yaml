@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: actions-runner
+  namespace: actions-runner
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: homelab-tofu-workflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: actions-runner
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: actions-runner
+        app.kubernetes.io/part-of: homelab-tofu-workflow
+    spec:
+      serviceAccountName: actions-runner
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
+      # Init container: wait for ESO to populate runner-auth secret, then
+      # copy the GH_TOKEN into the shared emptyDir so the main container
+      # can use it to fetch the ephemeral registration token.
+      initContainers:
+        - name: wait-for-secret
+          image: docker.io/alpine/curl:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "Waiting for ESO to populate runner-auth secret..."
+              timeout=300
+              while [ ! -s /secrets/runner/GH_TOKEN ]; do
+                sleep 5
+                timeout=$((timeout - 5))
+                if [ $timeout -le 0 ]; then
+                  echo "FATAL: GH_TOKEN not available after 5 minutes"
+                  exit 1
+                fi
+              done
+              echo "GH_TOKEN found, copying to shared volume..."
+              cp /secrets/runner/GH_TOKEN /shared/gh_token
+              echo "Ready."
+          volumeMounts:
+            - name: secrets-runner
+              mountPath: /secrets/runner
+              readOnly: true
+            - name: shared-token
+              mountPath: /shared
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+      containers:
+        - name: runner
+          # Image: ghcr.io/karabayogo/actions-runner:latest
+          # Build with: docker build -f infrastructure/runner/Dockerfile .
+          # Push with: docker push ghcr.io/karabayogo/actions-runner:latest
+          # NOTE: Without the custom image, this won't work — fall back to
+          #       the official image with a custom entrypoint only if needed.
+          image: ghcr.io/karabayogo/actions-runner:latest
+          imagePullPolicy: Always
+          env:
+            - name: GH_TOKEN_FILE
+              value: /shared/gh_token
+            - name: GITHUB_ORG
+              value: karabayogo
+            - name: GITHUB_REPO
+              value: homelab-tofu-workflow
+            - name: RUNNER_LABELS
+              value: self-hosted,LAN,moltbot
+            - name: RUNNER_WORK
+              value: /runner/_work
+          volumeMounts:
+            - name: shared-token
+              mountPath: /shared
+            # Docker-in-Docker: workflow steps like build-and-push need docker
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "ps aux | grep -v grep | grep Runner.Listener || exit 1"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "ps aux | grep -v grep | grep -q Runner.Listener"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: secrets-runner
+          secret:
+            secretName: runner-auth
+            optional: false
+        - name: shared-token
+          emptyDir: {}
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+      tolerations:
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoSchedule"
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
