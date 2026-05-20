@@ -44,6 +44,7 @@ module "k8s_master2" {
   static_ip         = "192.168.1.202"
   k3s_token         = var.k3s_token
   k3s_role          = "server"
+  k3s_join_server   = "192.168.1.201"  # joins master1 (bootstrap primary)
   vm_started        = true
 
   proxmox_host = "192.168.1.50"
@@ -137,6 +138,7 @@ module "k8s_master3" {
   static_ip         = "192.168.1.203"
   k3s_token         = var.k3s_token
   k3s_role          = "server"
+  k3s_join_server   = "192.168.1.201"  # joins master1 (bootstrap primary)
   vm_started        = true
 
   proxmox_host = "192.168.1.50"
