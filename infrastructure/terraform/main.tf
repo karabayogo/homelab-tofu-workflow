@@ -54,6 +54,14 @@ module "k8s_master2" {
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
 
+  # Longhorn node labels - declarative at IaC layer
+  node_labels = {
+    "node.longhorn.io/create-default-disk" = "true"
+  }
+  post_create_node_labels = {
+    "node.kubernetes.io/longhorn-storage" = "available"
+  }
+
   protect_vm = true
 }
 
@@ -93,6 +101,14 @@ module "k8s_master1" {
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
 
+  # Longhorn node labels - declarative at IaC layer
+  node_labels = {
+    "node.longhorn.io/create-default-disk" = "true"
+  }
+  post_create_node_labels = {
+    "node.kubernetes.io/longhorn-storage" = "available"
+  }
+
   protect_vm = true
 }
 
@@ -130,6 +146,14 @@ module "k8s_master3" {
   admin_user      = "ubuntu"
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
+
+  # Longhorn node labels - declarative at IaC layer
+  node_labels = {
+    "node.longhorn.io/create-default-disk" = "true"
+  }
+  post_create_node_labels = {
+    "node.kubernetes.io/longhorn-storage" = "available"
+  }
 
   protect_vm = true
 }
@@ -169,6 +193,14 @@ module "k8s_worker1" {
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
 
+  # Longhorn node labels - declarative at IaC layer
+  node_labels = {
+    "node.longhorn.io/create-default-disk" = "true"
+  }
+  post_create_node_labels = {
+    "node.kubernetes.io/longhorn-storage" = "available"
+  }
+
   protect_vm = true
 }
 
@@ -206,6 +238,14 @@ module "k8s_worker2" {
   admin_user      = "ubuntu"
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
+
+  # Longhorn node labels - declarative at IaC layer
+  node_labels = {
+    "node.longhorn.io/create-default-disk" = "true"
+  }
+  post_create_node_labels = {
+    "node.kubernetes.io/longhorn-storage" = "available"
+  }
 
   protect_vm = true
 }

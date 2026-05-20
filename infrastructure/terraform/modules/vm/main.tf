@@ -22,13 +22,15 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
     data = templatefile(
       "${path.module}/templates/cloud-init-${var.k3s_role == "server" ? "master" : "worker"}.yaml.tftpl",
       {
-        hostname        = var.vm_name
-        ssh_pub_key     = var.ssh_pub_key
-        tofu_deploy_key = var.tofu_deploy_key
-        k3s_version     = var.k3s_version
-        k3s_token       = var.k3s_token
-        static_ip       = var.static_ip
-        k3s_join_server = var.k3s_join_server
+        hostname          = var.vm_name
+        ssh_pub_key       = var.ssh_pub_key
+        tofu_deploy_key   = var.tofu_deploy_key
+        k3s_version       = var.k3s_version
+        k3s_token         = var.k3s_token
+        static_ip         = var.static_ip
+        k3s_join_server   = var.k3s_join_server
+        node_labels_args  = local.node_labels_args
+        data_disk_size_gb = var.data_disk_size_gb
       }
     )
     file_name = "cloudinit-${var.vm_name}.yaml"
@@ -37,6 +39,12 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
   lifecycle {
     ignore_changes = [source_raw[0].data]
   }
+}
+
+# ── Locals: Node label helpers ──
+locals {
+  node_labels_args = length(var.node_labels) > 0 ? join(" ", [for k, v in var.node_labels : " --node-label ${k}=${v}"]) : ""
+  post_create_label_commands = length(var.post_create_node_labels) > 0 ? join("\n          ", [for k, v in var.post_create_node_labels : "kubectl label node ${var.vm_name} ${k}=${v} --overwrite"]) : ""
 }
 
 # ── VM resource ──
@@ -164,6 +172,7 @@ resource "null_resource" "k8s_worker_label" {
         if kubectl get node ${var.vm_name} 2>/dev/null | grep -q " Ready "; then
           echo "[vm-gitops] Node ${var.vm_name} is Ready. Applying worker label."
           kubectl label node ${var.vm_name} node-role.kubernetes.io/worker=worker --overwrite
+          ${local.post_create_label_commands}
           exit 0
         fi
         sleep 10
