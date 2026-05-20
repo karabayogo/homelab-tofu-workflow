@@ -77,3 +77,4 @@ jobs:
 - State is stored in Garage S3 with `us-east-1` SigV4 region workaround
 - VMs are cattle: `prevent_destroy = true`, imported via `tofu import`, cloud-init handles k3s bootstrap
 - Worker nodes get `node-role.kubernetes.io/worker` label applied via post-create kubectl hook
+# smoke test 2026-05-20T22:35:35+10:00
