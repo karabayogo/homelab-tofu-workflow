@@ -10,7 +10,7 @@ jobs:
   tofu:
     uses: ./.github/workflows/tofu.yml
     with:
-      runner_labels: '["self-hosted", "LAN", "moltbot"]'
+      runner_labels: '["self-hosted", "LAN", "k8s-workbench"]'
       tofu_version: "1.11.6"
       terraform_dir: infrastructure/terraform
       checkout_path: "."
