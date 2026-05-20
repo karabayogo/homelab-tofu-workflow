@@ -8,3 +8,9 @@
 # Override variables (contains secrets — never commit)
 terraform.tfvars
 *.tfvars
+
+# OpenTofu
+*.tfplan
+*.tfstate
+*.tfstate.backup
+.terraform/
