@@ -58,9 +58,9 @@ module "k8s_master2" {
   node_labels = {
     "node.longhorn.io/create-default-disk" = "true"
   }
-  post_create_node_labels = {
-    "node.kubernetes.io/longhorn-storage" = "available"
-  }
+  # No additional post-create Longhorn labels on control-plane nodes.
+  # Capacity-tier labels are only declared for worker nodes with data disks.
+  post_create_node_labels = {}
 
   protect_vm = true
 }
@@ -105,9 +105,9 @@ module "k8s_master1" {
   node_labels = {
     "node.longhorn.io/create-default-disk" = "true"
   }
-  post_create_node_labels = {
-    "node.kubernetes.io/longhorn-storage" = "available"
-  }
+  # No additional post-create Longhorn labels on control-plane nodes.
+  # Capacity-tier labels are only declared for worker nodes with data disks.
+  post_create_node_labels = {}
 
   protect_vm = true
 }
@@ -151,9 +151,9 @@ module "k8s_master3" {
   node_labels = {
     "node.longhorn.io/create-default-disk" = "true"
   }
-  post_create_node_labels = {
-    "node.kubernetes.io/longhorn-storage" = "available"
-  }
+  # No additional post-create Longhorn labels on control-plane nodes.
+  # Capacity-tier labels are only declared for worker nodes with data disks.
+  post_create_node_labels = {}
 
   protect_vm = true
 }

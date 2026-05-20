@@ -43,8 +43,8 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
 
 # ── Locals: Node label helpers ──
 locals {
-  node_labels_args = length(var.node_labels) > 0 ? join(" ", [for k, v in var.node_labels : " --node-label ${k}=${v}"]) : ""
-  post_create_label_commands = length(var.post_create_node_labels) > 0 ? join("\n          ", [for k, v in var.post_create_node_labels : "kubectl label node ${var.vm_name} ${k}=${v} --overwrite"]) : ""
+  node_labels_args           = length(var.node_labels) > 0 ? join(" ", [for k, v in var.node_labels : " --node-label ${k}=${v}"]) : ""
+  post_create_label_commands = length(var.post_create_node_labels) > 0 ? join("\n      ", [for k, v in var.post_create_node_labels : "kubectl label node \"$node_name\" ${k}=${v} --overwrite"]) : ""
 }
 
 # ── VM resource ──
@@ -159,26 +159,37 @@ resource "proxmox_virtual_environment_vm" "this" {
 # k3s v1.33+ restricts node-role.kubernetes.io labels in kubelet,
 # so they must be applied via the API after the node joins.
 resource "null_resource" "k8s_worker_label" {
-  count = var.k3s_role == "agent" ? 1 : 0
+  count = var.k3s_role == "agent" || length(var.post_create_node_labels) > 0 ? 1 : 0
 
   triggers = {
-    vm_id = proxmox_virtual_environment_vm.this[0].id
+    vm_id                   = proxmox_virtual_environment_vm.this[0].id
+    k3s_role                = var.k3s_role
+    post_create_labels_hash = sha1(jsonencode(var.post_create_node_labels))
   }
 
   provisioner "local-exec" {
     command = <<EOT
-      echo "[vm-gitops] Waiting for node ${var.vm_name} to join cluster before labeling..."
-      for i in {1..30}; do
-        if kubectl get node ${var.vm_name} 2>/dev/null | grep -q " Ready "; then
-          echo "[vm-gitops] Node ${var.vm_name} is Ready. Applying worker label."
-          kubectl label node ${var.vm_name} node-role.kubernetes.io/worker=worker --overwrite
-          ${local.post_create_label_commands}
-          exit 0
+      set -euo pipefail
+      echo "[vm-gitops] Waiting for node with InternalIP ${var.static_ip} to register..."
+      node_name=""
+      for i in {1..60}; do
+        node_name=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.addresses[?(@.type=="InternalIP")]}{.address}{end}{"\\n"}{end}' | awk '$2=="${var.static_ip}" {print $1; exit}')
+        if [ -n "$node_name" ] && kubectl wait --for=condition=Ready "node/$node_name" --timeout=10s >/dev/null 2>&1; then
+          echo "[vm-gitops] Node $node_name is Ready."
+          break
         fi
         sleep 10
       done
-      echo "[vm-gitops] Error: Timeout waiting for node ${var.vm_name} to become Ready"
-      exit 1
+
+      if [ -z "$node_name" ]; then
+        echo "[vm-gitops] Error: Timeout waiting for node with InternalIP ${var.static_ip}"
+        exit 1
+      fi
+
+      if [ "${var.k3s_role}" = "agent" ]; then
+        kubectl label node "$node_name" node-role.kubernetes.io/worker=worker --overwrite
+      fi
+      ${local.post_create_label_commands}
     EOT
   }
 }
