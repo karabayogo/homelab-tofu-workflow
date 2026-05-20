@@ -1,12 +1,13 @@
 #cloud-config
 # K3S_WORKER_TEMPLATE — k8s worker nodes
+# Includes data disk formatting/mounting for Longhorn storage
 hostname: ${hostname}
 fqdn: ${hostname}.local
 manage_etc_hosts: true
 
 users:
   - name: ubuntu
-    sudo: ALL=(ALL) NOPASSWD:ALL
+    sudo: ALL=(ALL) NOPASSWD:***
     shell: /bin/bash
     lock_passwd: true
     ssh_authorized_keys:
@@ -19,6 +20,7 @@ packages:
   - curl
   - qemu-guest-agent
   - nfs-common
+  - xfsprogs
 
 write_files:
   - path: /etc/sysctl.d/99-k3s.conf
@@ -26,15 +28,84 @@ write_files:
       net.bridge.bridge-nf-call-iptables = 1
       net.bridge.bridge-nf-call-ip6tables = 1
       net.ipv4.ip_forward = 1
+  %{ if data_disk_size_gb > 0 ~}
+  - path: /opt/longhorn-setup.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -e
+      echo "[longhorn-setup] Setting up data disk for Longhorn..."
+      DISK="/dev/sdb"
+      MOUNT_POINT="/var/lib/longhorn-additional"
+      
+      # Wait for disk to be available
+      for i in {1..30}; do
+        if [ -b "$DISK" ]; then
+          echo "[longhorn-setup] Disk $DISK found"
+          break
+        fi
+        echo "[longhorn-setup] Waiting for disk $DISK... ($i/30)"
+        sleep 2
+      done
+      
+      # Check if already formatted
+      if ! blkid "$DISK" > /dev/null 2>&1; then
+        echo "[longhorn-setup] Formatting $DISK as ext4..."
+        mkfs.ext4 -F -L longhorn-additional "$DISK"
+      else
+        echo "[longhorn-setup] Disk $DISK already formatted"
+      fi
+      
+      # Create mount point
+      mkdir -p "$MOUNT_POINT"
+      
+      # Mount disk
+      if ! mountpoint -q "$MOUNT_POINT"; then
+        echo "[longhorn-setup] Mounting $DISK at $MOUNT_POINT..."
+        mount "$DISK" "$MOUNT_POINT"
+      else
+        echo "[longhorn-setup] $MOUNT_POINT already mounted"
+      fi
+      
+      # Add to fstab if not present
+      if ! grep -q "$MOUNT_POINT" /etc/fstab; then
+        echo "[longhorn-setup] Adding $MOUNT_POINT to fstab..."
+        echo "$DISK $MOUNT_POINT ext4 defaults 0 2" >> /etc/fstab
+      else
+        echo "[longhorn-setup] $MOUNT_POINT already in fstab"
+      fi
+      
+      # Create Longhorn disk config
+      mkdir -p "$MOUNT_POINT/longhorn"
+      cat > "$MOUNT_POINT/longhorn/longhorn-disk.cfg" << 'DISKEOF'
+{
+  "path": "/var/lib/longhorn-additional",
+  "allowScheduling": true,
+  "storageReserved": 0,
+  "tags": ["large-capacity"]
+}
+DISKEOF
+      echo "[longhorn-setup] Longhorn disk config created"
+      
+      # Set ownership
+      chown -R root:root "$MOUNT_POINT"
+      chmod 755 "$MOUNT_POINT"
+      
+      echo "[longhorn-setup] Data disk setup complete"
+  %{ endif ~}
 
 runcmd:
   # Kernel params
   - sysctl --system
+  %{ if data_disk_size_gb > 0 ~}
+  # Setup data disk for Longhorn
+  - ['/opt/longhorn-setup.sh']
+  %{ endif ~}
 
-  # Install and join k3s with static IP
+  # Install k3s agent with node labels
   # --node-label node-role.kubernetes.io/worker is REMOVED — restricted namespace in k3s v1.33+
   # Worker label is applied by tofu post-create hook (kubectl label node)
-  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" K3S_URL="https://192.168.1.201:6443" K3S_TOKEN="${k3s_token}" sh -s - --node-ip "${static_ip}"
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" K3S_URL="https://192.168.1.201:6443" K3S_TOKEN="***" sh -s - --node-ip "${static_ip}"${node_labels_args}
 
   # QEMU guest agent — required for qm agent and qm guest exec
   - systemctl enable qemu-guest-agent

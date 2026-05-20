@@ -206,3 +206,17 @@ variable "protect_vm" {
   type        = bool
   default     = true
 }
+
+# ── Node labels for k3s registration ──
+
+variable "node_labels" {
+  description = "Map of node labels to set via k3s --node-label flag (non-restricted domains only)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "post_create_node_labels" {
+  description = "Map of node labels to apply via kubectl after node joins (for restricted domains like node.kubernetes.io/*)"
+  type        = map(string)
+  default     = {}
+}

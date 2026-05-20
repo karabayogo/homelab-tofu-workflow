@@ -140,9 +140,8 @@ resource "proxmox_virtual_environment_vm" "this" {
   lifecycle {
     ignore_changes = [
       initialization,
-      ipv4_addresses,
-      ipv6_addresses,
-      network_interface_names,
+      # ipv4/ipv6 are provider-decided, not user-configurable
+      # network_interface_names is assigned by PVE
     ]
     prevent_destroy = true
   }
