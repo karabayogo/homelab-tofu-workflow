@@ -1,0 +1,10 @@
+# OpenTofu state
+.state/
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+
+# Override variables (contains secrets — never commit)
+terraform.tfvars
+*.tfvars

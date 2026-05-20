@@ -1,0 +1,23 @@
+name: Infra Apply
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  tofu:
+    uses: ./.github/workflows/tofu.yml
+    with:
+      runner_labels: '["self-hosted", "LAN", "moltbot", "k8s-workbench"]'
+      tofu_version: "1.11.6"
+      terraform_dir: infrastructure/terraform
+      checkout_path: "."
+    secrets:
+      PROXMOX_API_TOKEN: ${{ secrets.PROXMOX_API_TOKEN }}
+      PVE_SSH_PRIVATE_KEY: ${{ secrets.PVE_SSH_PRIVATE_KEY }}
+      GARAGE_ACCESS_KEY: ${{ secrets.GARAGE_ACCESS_KEY }}
+      GARAGE_SECRET_KEY: ${{ secrets.GARAGE_SECRET_KEY }}
+      GARAGE_ENDPOINT_URL_OVERRIDE: ${{ secrets.GARAGE_ENDPOINT_URL_OVERRIDE }}
+      K3S_TOKEN: ${{ secrets.K3S_TOKEN }}

@@ -1,0 +1,10 @@
+# vm-gitops / OpenTofu state
+.state/
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+
+# Override variables (contains secrets — never commit this)
+terraform.tfvars
+cloud-init/

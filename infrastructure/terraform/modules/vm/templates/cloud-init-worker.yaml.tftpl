@@ -1,0 +1,41 @@
+#cloud-config
+# K3S_WORKER_TEMPLATE — k8s worker nodes
+hostname: ${hostname}
+fqdn: ${hostname}.local
+manage_etc_hosts: true
+
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ssh_pub_key}
+      %{ if tofu_deploy_key != "" ~}
+      - ${tofu_deploy_key}
+      %{ endif ~}
+
+packages:
+  - curl
+  - qemu-guest-agent
+  - nfs-common
+
+write_files:
+  - path: /etc/sysctl.d/99-k3s.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
+
+runcmd:
+  # Kernel params
+  - sysctl --system
+
+  # Install and join k3s with static IP
+  # --node-label node-role.kubernetes.io/worker is REMOVED — restricted namespace in k3s v1.33+
+  # Worker label is applied by tofu post-create hook (kubectl label node)
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" K3S_URL="https://192.168.1.201:6443" K3S_TOKEN="${k3s_token}" sh -s - --node-ip "${static_ip}"
+
+  # QEMU guest agent — required for qm agent and qm guest exec
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
