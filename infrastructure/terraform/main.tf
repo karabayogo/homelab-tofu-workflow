@@ -7,6 +7,16 @@
 # DO NOT EDIT MANUALLY — changes must go through tofu plan/apply.
 # ============================================================
 
+module "garage_s3" {
+  source = "./modules/garage-s3"
+
+  admin_endpoint    = "http://192.168.1.230:3900"
+  admin_key_id      = var.garage_access_key
+  admin_secret_key  = var.garage_secret_key
+  bucket_name       = "terraform-state"
+  terraform_key_name = "terraform-state-key"
+}
+
 terraform {
   backend "s3" {
     endpoint                    = "http://192.168.1.230:3900"
