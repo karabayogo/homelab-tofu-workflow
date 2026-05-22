@@ -20,6 +20,8 @@ spec:
         app.kubernetes.io/part-of: homelab-tofu-workflow
     spec:
       serviceAccountName: actions-runner
+      imagePullSecrets:
+        - name: ghcr-io-pull
       securityContext:
         runAsUser: 1000
         fsGroup: 1000
