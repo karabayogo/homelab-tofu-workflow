@@ -77,9 +77,6 @@ spec:
           volumeMounts:
             - name: shared-token
               mountPath: /shared
-            # Docker-in-Docker: workflow steps like build-and-push need docker
-            - name: docker-sock
-              mountPath: /var/run/docker.sock
           resources:
             requests:
               cpu: 100m
@@ -107,10 +104,6 @@ spec:
             optional: false
         - name: shared-token
           emptyDir: {}
-        - name: docker-sock
-          hostPath:
-            path: /var/run/docker.sock
-            type: Socket
       tolerations:
         - key: "node-role.kubernetes.io/master"
           operator: "Exists"
