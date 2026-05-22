@@ -139,7 +139,8 @@ resource "proxmox_virtual_environment_vm" "this" {
     timeout = "15m"
   }
 
-  started = var.vm_started
+  started    = var.vm_started
+  protection = var.protect_vm ? true : false
 
   # ── Cloud-image provisioner ──
   # Runs ONLY on resource CREATE. Writes the OS image to the stopped VM's disk.
