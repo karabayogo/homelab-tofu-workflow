@@ -49,7 +49,7 @@ module "k8s_master2" {
   vm_machine        = "q35"
   tags              = ["k8s-master"]
   os_version        = "24.04"
-  boot_order        = ["scsi0", "ide2", "net0"]
+  boot_order        = ["scsi0"]
   network_mac       = "BC:24:11:99:2E:79"
   static_ip         = "192.168.1.202"
   k3s_token         = var.k3s_token
@@ -96,7 +96,7 @@ module "k8s_master1" {
   vm_machine        = "q35"
   tags              = ["k8s-master"]
   os_version        = "24.04"
-  boot_order        = ["scsi0", "ide2", "net0"]
+  boot_order        = ["scsi0"]
   network_mac       = "BC:24:11:03:3C:33"
   static_ip         = "192.168.1.201"
   k3s_token         = var.k3s_token
@@ -143,7 +143,7 @@ module "k8s_master3" {
   vm_machine        = "q35"
   tags              = ["k8s-master"]
   os_version        = "24.04"
-  boot_order        = ["scsi0", "ide2", "net0"]
+  boot_order        = ["scsi0"]
   network_mac       = "BC:24:11:D6:6C:25"
   static_ip         = "192.168.1.203"
   k3s_token         = var.k3s_token
@@ -190,7 +190,7 @@ module "k8s_worker1" {
   vm_machine        = "q35"
   tags              = ["k8s-worker"]
   os_version        = "24.04"
-  boot_order        = ["scsi0", "ide2", "net0"]
+  boot_order        = ["scsi0"]
   network_mac       = "BC:24:11:3D:3C:72"
   static_ip         = "192.168.1.204"
   k3s_token         = var.k3s_token
@@ -236,7 +236,7 @@ module "k8s_worker2" {
   vm_machine        = "q35"
   tags              = ["k8s-worker"]
   os_version        = "24.04"
-  boot_order        = ["scsi0", "ide2", "net0"]
+  boot_order        = ["scsi0"]
   network_mac       = "BC:24:11:73:7C:22"
   static_ip         = "192.168.1.205"
   k3s_token         = var.k3s_token

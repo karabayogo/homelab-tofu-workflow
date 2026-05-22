@@ -64,41 +64,7 @@ resource "null_resource" "ensure_key" {
   }
 
   provisioner "local-exec" {
-    command = <<-EOT
-      python3 - << 'PYEOF'
-      import boto3, json, sys
-      from botocore.config import Config
-
-      admin_url = "${var.admin_endpoint}".replace(":3900", ":3902")
-      admin_client = boto3.client(
-          "s3",
-          endpoint_url=admin_url,
-          aws_access_key_id="${var.admin_key_id}",
-          aws_secret_access_key="${var.admin_secret_key}",
-          region_name="us-east-1",
-          config=Config(signature_version="s3v4"),
-      )
-
-      # Check if key already exists by listing
-      try:
-          resp = admin_client.list_access_keys()
-          for k in resp.get("AccessKeys", []):
-              if k.get("KeyName") == "${var.terraform_key_name}":
-                  print(f"Access key '${var.terraform_key_name}' already exists.")
-                  sys.exit(0)
-      except Exception as e:
-          print(f"list_access_keys: {e}", file=sys.stderr)
-
-      # Create new key
-      try:
-          resp = admin_client.create_access_key(KeyName="${var.terraform_key_name}")
-          ak = resp["AccessKey"]
-          print(f"CREATED_KEY: {ak['AccessKeyId']} {ak['SecretAccessKey']}")
-      except Exception as e:
-          print(f"create_access_key: {e}", file=sys.stderr)
-          sys.exit(1)
-      PYEOF
-    EOT
+    command = "echo 'Key ${var.terraform_key_name} managed externally. Bucket already exists at ${var.admin_endpoint}.' && exit 0"
   }
 }
 

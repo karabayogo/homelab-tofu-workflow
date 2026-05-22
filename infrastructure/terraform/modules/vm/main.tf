@@ -167,13 +167,13 @@ resource "null_resource" "k8s_worker_label" {
     post_create_labels_hash = sha1(jsonencode(var.post_create_node_labels))
   }
 
-  provisioner "local-exec" {
+provisioner "local-exec" {
     command = <<EOT
-      set -euo pipefail
+      set -eu
       echo "[vm-gitops] Waiting for node with InternalIP ${var.static_ip} to register..."
       node_name=""
-      for i in {1..60}; do
-        node_name=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.addresses[?(@.type=="InternalIP")]}{.address}{end}{"\\n"}{end}' | awk '$2=="${var.static_ip}" {print $1; exit}')
+      for i in $(seq 1 60); do
+        node_name=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.addresses[?(@.type=="InternalIP")]}{.address}{end}{"\n"}{end}' | awk '$2=="${var.static_ip}" {print $1; exit}')
         if [ -n "$node_name" ] && kubectl wait --for=condition=Ready "node/$node_name" --timeout=10s >/dev/null 2>&1; then
           echo "[vm-gitops] Node $node_name is Ready."
           break

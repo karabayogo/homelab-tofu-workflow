@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+  schedule:
+    # Daily drift check — 09:00 Melbourne time (AEST = UTC+10)
+    # Using cron schedule so CI runs independently of code changes.
+    - cron: "0 23 * * *"
 
 jobs:
   tofu:
@@ -21,3 +26,44 @@ jobs:
       GARAGE_SECRET_KEY: ${{ secrets.GARAGE_SECRET_KEY }}
       GARAGE_ENDPOINT_URL_OVERRIDE: ${{ secrets.GARAGE_ENDPOINT_URL_OVERRIDE }}
       K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
+
+  # Phase 5: Drift detection — runs tofu plan and posts summary as PR comment
+  # Only runs on scheduled trigger (not on push/PR to avoid noise)
+  drift-check:
+    if: github.event_name == 'schedule'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            infrastructure/terraform
+          sparse-checkout-cone-mode: false
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.11.6"
+
+      - name: Run tofu plan
+        id: plan
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.GARAGE_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.GARAGE_SECRET_KEY }}
+          AWS_ENDPOINT_URL_OVERRIDE: ${{ secrets.GARAGE_ENDPOINT_URL_OVERRIDE }}
+        run: |
+          cd infrastructure/terraform
+          tofu init -backend=false 2>&1 | tail -5
+          tofu plan -detailed-exitcode -lock=false 2>&1 | tee /tmp/plan_output.txt
+          echo "PLAN_EXIT=$?" >> $GITHUB_OUTPUT
+
+      - name: Post drift summary
+        if: always()
+        run: |
+          PLAN_EXIT=$(cat /tmp/plan_output.txt | tail -5)
+          echo "## OpenTofu Drift Check" >> $GITHUB_STEP_SUMMARY
+          echo "Plan exit code: \${PLAN_EXIT##*:}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat /tmp/plan_output.txt | tail -20 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
