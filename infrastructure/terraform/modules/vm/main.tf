@@ -149,9 +149,14 @@ resource "proxmox_virtual_environment_vm" "this" {
   }
 
   lifecycle {
+    # All attributes that should never trigger a plan change:
+    # - initialization: PVE computes this from VM config; differs from HCL defaults on import
+    # - ipv4_addresses, ipv6_addresses, network_interface_names: provider-computed read-only
+    # The bpg/proxmox provider does not respect ignore_changes for these provider-computed
+    # attributes (they show as "known after apply" in plan output), but including them here
+    # silences tofu's redundant-ignore_changes warning and documents intent.
     ignore_changes = [
       initialization,
-      # Provider-decided, not user-configurable in HCL:
       ipv4_addresses,
       ipv6_addresses,
       network_interface_names,
