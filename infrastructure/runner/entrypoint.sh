@@ -9,7 +9,7 @@ set -e
 
 GITHUB_ORG="${GITHUB_ORG:-karabayogo}"
 GITHUB_REPO="${GITHUB_REPO:-homelab-tofu-workflow}"
-RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,LAN,moltbot}"
+RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,LAN,k8s-workbench,moltbot}"
 RUNNER_WORK="${RUNNER_WORK:-_work}"
 
 RUNNER_DIR="$(pwd)"
