@@ -261,3 +261,42 @@ module "k8s_worker2" {
 
   protect_vm = true
 }
+
+module "openclaw" {
+  source = "./modules/vm"
+
+  vm_id             = 251
+  vm_name           = "openclaw"
+  memory_mb         = 4096
+  cpu_cores         = 2
+  os_disk_size_gb   = 32
+  data_disk_size_gb = 50
+  vm_storage        = "local-zfs"
+  data_storage      = "bulkpool"
+  bridge            = "vmbr0"
+  vm_os_type        = "l26"
+  vm_bios           = "ovmf"
+  vm_machine        = "q35"
+  tags              = ["standalone"]
+  os_version        = "24.04"
+  static_ip         = "192.168.1.252"
+  vm_started        = false
+
+  # Mode A: cloud-image provisioner credentials
+  proxmox_host  = "192.168.1.50"
+  ssh_key_path  = "/home/moltbot/.ssh/pve-kai"
+  proxmox_node  = "pve"
+
+  # Cloud-init admin user and SSH key
+  admin_user      = "kai"
+  ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBMxi6BHoubPcyMHTE3Ipa0G2Ivc9jAcJq0ks+H9BC19 kai-to-proxmox-root"
+  tofu_deploy_key = ""
+
+  # Workload profile
+  k3s_enabled         = false
+  k3s_role            = "agent"
+  cloud_init_template = "base"
+
+  protect_vm = true
+}
+
