@@ -265,7 +265,7 @@ module "k8s_worker2" {
 module "openclaw" {
   source = "./modules/vm"
 
-  vm_id             = 251
+  vm_id             = 252
   vm_name           = "openclaw"
   memory_mb         = 4096
   cpu_cores         = 2
