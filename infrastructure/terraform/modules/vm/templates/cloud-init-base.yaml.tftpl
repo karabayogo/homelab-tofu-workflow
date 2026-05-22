@@ -14,23 +14,23 @@ users:
   - name: root
     ssh_authorized_keys:
       - ${ssh_pub_key}
-      %{ if tofu_deploy_key != "" ~}
+%{ if tofu_deploy_key != "" }
       - ${tofu_deploy_key}
-      %{ endif ~}
+%{ endif }
   - name: ${admin_user}
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
     lock_passwd: true
     ssh_authorized_keys:
       - ${ssh_pub_key}
-      %{ if tofu_deploy_key != "" ~}
+%{ if tofu_deploy_key != "" }
       - ${tofu_deploy_key}
-      %{ endif ~}
+%{ endif }
 
 hostname: ${hostname}
 manage_etc_hosts: true
 
-%{ if data_disk_size_gb > 0 ~}
+%{ if data_disk_size_gb > 0 }
 write_files:
   - path: /opt/data-disk-setup.sh
     permissions: "0755"
@@ -66,14 +66,14 @@ write_files:
 
       chown -R ${admin_user}:${admin_user} "$MOUNT_POINT"
       chmod 755 "$MOUNT_POINT"
-%{ endif ~}
+%{ endif }
 
 runcmd:
   - systemctl enable qemu-guest-agent
   - systemctl start qemu-guest-agent
-  %{ if data_disk_size_gb > 0 ~}
+%{ if data_disk_size_gb > 0 }
   - ['/opt/data-disk-setup.sh']
-  %{ endif ~}
+%{ endif }
   - [bash, -c, "apt-get update -qq"]
 
 power_state:

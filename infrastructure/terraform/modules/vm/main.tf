@@ -42,10 +42,6 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
     )
     file_name = "cloudinit-${var.vm_name}.yaml"
   }
-
-  lifecycle {
-    ignore_changes = [source_raw[0].data]
-  }
 }
 
 # ── Locals: Node label helpers ──
@@ -155,48 +151,37 @@ resource "proxmox_virtual_environment_vm" "this" {
   lifecycle {
     ignore_changes = [
       initialization,
-      # ipv4/ipv6 are provider-decided, not user-configurable
-      # network_interface_names is assigned by PVE
+      # Provider-decided, not user-configurable in HCL:
+      ipv4_addresses,
+      ipv6_addresses,
+      network_interface_names,
     ]
     prevent_destroy = true
   }
 }
 
 # ── Post-create hook: Label k8s worker nodes ──
-# k3s v1.33+ restricts node-role.kubernetes.io labels in kubelet,
-# so they must be applied via the API after the node joins.
+# REMOVED: This provisioner runs on the TOFU HOST (not inside the VM).
+# Since the tofu host is outside the k8s cluster network, it cannot reach
+# the API server at 192.168.1.201:6443. The kubectl commands would fail.
+#
+# Node labeling is already handled correctly via cloud-init --node-labels
+# in the VM module's user_data. That runs INSIDE the VM during boot, which
+# is the correct place for VM-side configuration.
+#
+# If you need to label nodes post-boot from the tofu host, you must:
+#   1. Copy ~/.kube/config to the tofu host first, OR
+#   2. Run a Kubernetes Job/CronJob inside the cluster that the tofu host
+#      triggers via a webhook or by writing to a ConfigMap/Secret.
+# DO NOT add local-exec provisioners that call kubectl from the tofu host.
 resource "null_resource" "k8s_worker_label" {
-  count = var.k3s_enabled && (var.k3s_role == "agent" || length(var.post_create_node_labels) > 0) ? 1 : 0
+  count = 0  # DISABLED — handled by cloud-init user_data instead
 
   triggers = {
-    vm_id                   = proxmox_virtual_environment_vm.this[0].id
-    k3s_role                = var.k3s_role
-    post_create_labels_hash = sha1(jsonencode(var.post_create_node_labels))
+    vm_id = proxmox_virtual_environment_vm.this[0].id
   }
 
-provisioner "local-exec" {
-    command = <<EOT
-      set -eu
-      echo "[vm-gitops] Waiting for node with InternalIP ${var.static_ip} to register..."
-      node_name=""
-      for i in $(seq 1 60); do
-        node_name=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.addresses[?(@.type=="InternalIP")]}{.address}{end}{"\n"}{end}' | awk '$2=="${var.static_ip}" {print $1; exit}')
-        if [ -n "$node_name" ] && kubectl wait --for=condition=Ready "node/$node_name" --timeout=10s >/dev/null 2>&1; then
-          echo "[vm-gitops] Node $node_name is Ready."
-          break
-        fi
-        sleep 10
-      done
-
-      if [ -z "$node_name" ]; then
-        echo "[vm-gitops] Error: Timeout waiting for node with InternalIP ${var.static_ip}"
-        exit 1
-      fi
-
-      if [ "${var.k3s_role}" = "agent" ]; then
-        kubectl label node "$node_name" node-role.kubernetes.io/worker=worker --overwrite
-      fi
-      ${local.post_create_label_commands}
-    EOT
+  provisioner "local-exec" {
+    command = "echo 'k8s_worker_label disabled — use cloud-init user_data instead' && exit 0"
   }
 }
