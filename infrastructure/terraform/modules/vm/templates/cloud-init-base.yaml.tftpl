@@ -1,0 +1,82 @@
+#cloud-config
+# BASE VM profile: infrastructure only (no k3s, no application installs).
+
+package_update: true
+packages:
+  - qemu-guest-agent
+  - curl
+  - wget
+  - git
+  - unzip
+
+disable_root: false
+users:
+  - name: root
+    ssh_authorized_keys:
+      - ${ssh_pub_key}
+      %{ if tofu_deploy_key != "" ~}
+      - ${tofu_deploy_key}
+      %{ endif ~}
+  - name: ${admin_user}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ssh_pub_key}
+      %{ if tofu_deploy_key != "" ~}
+      - ${tofu_deploy_key}
+      %{ endif ~}
+
+hostname: ${hostname}
+manage_etc_hosts: true
+
+%{ if data_disk_size_gb > 0 ~}
+write_files:
+  - path: /opt/data-disk-setup.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -e
+      DISK="/dev/sdb"
+      MOUNT_POINT="/data"
+
+      for i in {1..30}; do
+        if [ -b "$DISK" ]; then
+          break
+        fi
+        sleep 2
+      done
+
+      if [ ! -b "$DISK" ]; then
+        exit 0
+      fi
+
+      if ! blkid "$DISK" > /dev/null 2>&1; then
+        mkfs.ext4 -F -L data "$DISK"
+      fi
+
+      mkdir -p "$MOUNT_POINT"
+      if ! mountpoint -q "$MOUNT_POINT"; then
+        mount "$DISK" "$MOUNT_POINT"
+      fi
+
+      if ! grep -q "$MOUNT_POINT" /etc/fstab; then
+        echo "$DISK $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
+      fi
+
+      chown -R ${admin_user}:${admin_user} "$MOUNT_POINT"
+      chmod 755 "$MOUNT_POINT"
+%{ endif ~}
+
+runcmd:
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+  %{ if data_disk_size_gb > 0 ~}
+  - ['/opt/data-disk-setup.sh']
+  %{ endif ~}
+  - [bash, -c, "apt-get update -qq"]
+
+power_state:
+  mode: reboot
+  condition: true
+  delay: 5

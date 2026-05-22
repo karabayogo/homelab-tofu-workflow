@@ -220,3 +220,22 @@ variable "post_create_node_labels" {
   type        = map(string)
   default     = {}
 }
+
+# ── Non-k3s / standalone VM support ──
+
+variable "k3s_enabled" {
+  description = "Whether this VM is a k3s node. false = standalone VM."
+  type        = bool
+  default     = true
+}
+
+variable "cloud_init_template" {
+  description = "Cloud-init template profile: master, worker, or base."
+  type        = string
+  default     = "worker"
+
+  validation {
+    condition     = contains(["master", "worker", "base"], var.cloud_init_template)
+    error_message = "cloud_init_template must be one of: master, worker, base"
+  }
+}

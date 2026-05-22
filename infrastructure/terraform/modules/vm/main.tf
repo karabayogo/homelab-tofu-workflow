@@ -20,7 +20,13 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
 
   source_raw {
     data = templatefile(
-      "${path.module}/templates/cloud-init-${var.k3s_role == "server" ? "master" : "worker"}.yaml.tftpl",
+      var.k3s_enabled
+        ? (
+          var.cloud_init_template == "base"
+          ? "${path.module}/templates/cloud-init-base.yaml.tftpl"
+          : "${path.module}/templates/cloud-init-${var.k3s_role == "server" ? "master" : "worker"}.yaml.tftpl"
+        )
+        : "${path.module}/templates/cloud-init-base.yaml.tftpl",
       {
         hostname          = var.vm_name
         ssh_pub_key       = var.ssh_pub_key
@@ -31,6 +37,7 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
         k3s_join_server   = var.k3s_join_server
         node_labels_args  = local.node_labels_args
         data_disk_size_gb = var.data_disk_size_gb
+        admin_user        = var.admin_user
       }
     )
     file_name = "cloudinit-${var.vm_name}.yaml"
@@ -159,7 +166,7 @@ resource "proxmox_virtual_environment_vm" "this" {
 # k3s v1.33+ restricts node-role.kubernetes.io labels in kubelet,
 # so they must be applied via the API after the node joins.
 resource "null_resource" "k8s_worker_label" {
-  count = var.k3s_role == "agent" || length(var.post_create_node_labels) > 0 ? 1 : 0
+  count = var.k3s_enabled && (var.k3s_role == "agent" || length(var.post_create_node_labels) > 0) ? 1 : 0
 
   triggers = {
     vm_id                   = proxmox_virtual_environment_vm.this[0].id
