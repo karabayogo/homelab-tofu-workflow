@@ -30,5 +30,8 @@ jobs:
           OPENCLAW_VM_HOST: ${{ vars.OPENCLAW_VM_HOST }}
         run: |
           set -euo pipefail
+          git sparse-checkout disable || true
+          git checkout -- .
+          test -f scripts/openclaw-runtime-contract.sh
           export SSH_KEY_PATH="$HOME/.ssh/openclaw_vm_key"
-          bash "$GITHUB_WORKSPACE/scripts/openclaw-runtime-contract.sh"
+          bash scripts/openclaw-runtime-contract.sh
