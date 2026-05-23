@@ -28,7 +28,7 @@ jobs:
         env:
           OPENCLAW_VM_USER: ${{ vars.OPENCLAW_VM_USER }}
           OPENCLAW_VM_HOST: ${{ vars.OPENCLAW_VM_HOST }}
-          SSH_KEY_PATH: ${{ env.HOME }}/.ssh/openclaw_vm_key
         run: |
           set -euo pipefail
-          bash scripts/openclaw-runtime-contract.sh
+          export SSH_KEY_PATH="$HOME/.ssh/openclaw_vm_key"
+          bash "$GITHUB_WORKSPACE/scripts/openclaw-runtime-contract.sh"
