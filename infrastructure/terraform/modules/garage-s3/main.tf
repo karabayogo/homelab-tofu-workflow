@@ -38,6 +38,8 @@ resource "null_resource" "ensure_bucket" {
               print(f"Creating bucket '${var.bucket_name}'...")
               client.create_bucket(Bucket="${var.bucket_name}")
               print(f"Bucket '${var.bucket_name}' created.")
+          elif code in ("403", "AccessDenied", "Forbidden"):
+              print(f"Bucket '${var.bucket_name}' exists but key cannot head/list it (code={code}); continuing.")
           else:
               print(f"head_bucket error: {e}", file=sys.stderr)
               sys.exit(1)

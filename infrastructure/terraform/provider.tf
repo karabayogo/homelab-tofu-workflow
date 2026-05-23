@@ -16,6 +16,6 @@ provider "proxmox" {
 
   ssh {
     username    = "root"
-    private_key = file("/home/moltbot/.ssh/pve-kai")
+    private_key = file("${pathexpand("~")}/.ssh/pve-kai")
   }
 }

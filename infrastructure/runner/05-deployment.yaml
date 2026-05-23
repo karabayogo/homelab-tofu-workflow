@@ -20,54 +20,53 @@ spec:
         app.kubernetes.io/part-of: homelab-tofu-workflow
     spec:
       serviceAccountName: actions-runner
-      imagePullSecrets:
-        - name: ghcr-io-pull
       securityContext:
         runAsUser: 1000
         fsGroup: 1000
-      # Init container: wait for ESO to populate runner-auth secret, then
-      # copy the GH_TOKEN into the shared emptyDir so the main container
-      # can use it to fetch the ephemeral registration token.
-      initContainers:
-        - name: wait-for-secret
-          image: docker.io/alpine/curl:latest
-          command: ["sh", "-c"]
-          args:
-            - |
-              echo "Waiting for ESO to populate runner-auth secret..."
-              timeout=300
-              while [ ! -s /secrets/runner/GH_TOKEN ]; do
-                sleep 5
-                timeout=$((timeout - 5))
-                if [ $timeout -le 0 ]; then
-                  echo "FATAL: GH_TOKEN not available after 5 minutes"
-                  exit 1
-                fi
-              done
-              echo "GH_TOKEN found, copying to shared volume..."
-              cp /secrets/runner/GH_TOKEN /shared/gh_token
-              echo "Ready."
-          volumeMounts:
-            - name: secrets-runner
-              mountPath: /secrets/runner
-              readOnly: true
-            - name: shared-token
-              mountPath: /shared
-          securityContext:
-            readOnlyRootFilesystem: true
-            allowPrivilegeEscalation: false
       containers:
         - name: runner
-          # Image: ghcr.io/karabayogo/actions-runner:latest
-          # Build with: docker build -f infrastructure/runner/Dockerfile .
-          # Push with: docker push ghcr.io/karabayogo/actions-runner:latest
-          # NOTE: Without the custom image, this won't work — fall back to
-          #       the official image with a custom entrypoint only if needed.
-          image: ghcr.io/karabayogo/actions-runner:latest
+          image: ghcr.io/actions/actions-runner:latest
           imagePullPolicy: Always
+          command: ["/bin/bash", "-lc"]
+          args:
+            - |
+              set -euo pipefail
+              GH_TOKEN_FILE="${GH_TOKEN_FILE:-/secrets/runner/GH_TOKEN}"
+              timeout=300
+              while [ ! -s "${GH_TOKEN_FILE}" ] && [ "${timeout}" -gt 0 ]; do
+                sleep 5
+                timeout=$((timeout - 5))
+              done
+              if [ ! -s "${GH_TOKEN_FILE}" ]; then
+                echo "[runner] FATAL: GH_TOKEN not available after 5 minutes"
+                exit 1
+              fi
+              GH_TOKEN="$(cat "${GH_TOKEN_FILE}")"
+              REG_TOKEN="$(
+                curl -sS -X POST \
+                  -H "Authorization: token ${GH_TOKEN}" \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "https://api.github.com/repos/${GITHUB_ORG}/${GITHUB_REPO}/actions/runners/registration-token" \
+                | jq -r '.token'
+              )"
+              if [ -z "${REG_TOKEN}" ] || [ "${REG_TOKEN}" = "null" ]; then
+                echo "[runner] FATAL: could not obtain registration token"
+                exit 1
+              fi
+              cd /home/runner
+              ./config.sh \
+                --name "homelab-tofu-runner-$(hostname)" \
+                --url "https://github.com/${GITHUB_ORG}/${GITHUB_REPO}" \
+                --token "${REG_TOKEN}" \
+                --labels "${RUNNER_LABELS}" \
+                --work "${RUNNER_WORK}" \
+                --unattended \
+                --replace
+              exec ./run.sh
           env:
             - name: GH_TOKEN_FILE
-              value: /shared/gh_token
+              value: /secrets/runner/GH_TOKEN
             - name: GITHUB_ORG
               value: karabayogo
             - name: GITHUB_REPO
@@ -75,10 +74,11 @@ spec:
             - name: RUNNER_LABELS
               value: self-hosted,LAN,k8s-workbench,moltbot
             - name: RUNNER_WORK
-              value: /runner/_work
+              value: /home/runner/_work
           volumeMounts:
-            - name: shared-token
-              mountPath: /shared
+            - name: secrets-runner
+              mountPath: /secrets/runner
+              readOnly: true
           resources:
             requests:
               cpu: 100m
@@ -87,7 +87,7 @@ spec:
               cpu: 2000m
               memory: 4Gi
           securityContext:
-            readOnlyRootFilesystem: true
+            readOnlyRootFilesystem: false
             allowPrivilegeEscalation: false
           livenessProbe:
             exec:
@@ -104,8 +104,6 @@ spec:
           secret:
             secretName: runner-auth
             optional: false
-        - name: shared-token
-          emptyDir: {}
       tolerations:
         - key: "node-role.kubernetes.io/master"
           operator: "Exists"

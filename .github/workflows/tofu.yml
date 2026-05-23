@@ -61,6 +61,14 @@ jobs:
       - name: Add tofu to PATH
         run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
+      - name: Install Python deps for Garage bootstrap
+        run: |
+          if ! python3 -m pip --version >/dev/null 2>&1; then
+            curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
+            python3 /tmp/get-pip.py --user --break-system-packages
+          fi
+          PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install --user boto3
+
       - name: Write PVE token
         run: |
           mkdir -p ~/.config/vm-gitops
@@ -69,12 +77,10 @@ jobs:
 
       - name: Write PVE SSH key
         run: |
-          for dir in /home/moltbot/.ssh "$HOME/.ssh"; do
-            mkdir -p "$dir"
-            chmod 700 "$dir"
-            echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$dir/pve-kai"
-            chmod 600 "$dir/pve-kai"
-          done
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
+          chmod 600 "$HOME/.ssh/pve-kai"
 
       - name: Terraform init
         run: |
@@ -126,6 +132,14 @@ jobs:
       - name: Add tofu to PATH
         run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
+      - name: Install Python deps for Garage bootstrap
+        run: |
+          if ! python3 -m pip --version >/dev/null 2>&1; then
+            curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
+            python3 /tmp/get-pip.py --user --break-system-packages
+          fi
+          PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install --user boto3
+
       - name: Write PVE token
         run: |
           mkdir -p ~/.config/vm-gitops
@@ -134,12 +148,10 @@ jobs:
 
       - name: Write PVE SSH key
         run: |
-          for dir in /home/moltbot/.ssh "$HOME/.ssh"; do
-            mkdir -p "$dir"
-            chmod 700 "$dir"
-            echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$dir/pve-kai"
-            chmod 600 "$dir/pve-kai"
-          done
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
+          chmod 600 "$HOME/.ssh/pve-kai"
 
       - name: Terraform init
         run: |
