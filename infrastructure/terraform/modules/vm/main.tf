@@ -143,10 +143,12 @@ resource "proxmox_virtual_environment_vm" "this" {
   protection = var.protect_vm ? true : false
 
   # ── Cloud-image provisioner ──
-  # Runs ONLY on resource CREATE. Writes the OS image to the stopped VM's disk.
-  # For imported VMs this is a no-op (disk already has the OS image).
+  # Runs ONLY on resource CREATE when VM is started fresh (not yet provisioned).
+  # Skips on every subsequent apply — VM is already provisioned once running.
   provisioner "local-exec" {
-    command = "${path.module}/scripts/vm-provisioner.sh ${self.vm_id} ${var.vm_name} ${var.os_version} ${var.proxmox_host} ${var.ssh_key_path}"
+    when        = create
+    command     = "${path.module}/scripts/vm-provisioner.sh ${self.vm_id} ${var.vm_name} ${var.os_version} ${var.proxmox_host} ${var.ssh_key_path}"
+    environment = { HOME = "/home/runner" }
   }
 
   lifecycle {
