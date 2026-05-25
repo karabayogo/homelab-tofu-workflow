@@ -297,5 +297,5 @@ module "openclaw" {
   k3s_role            = "agent"
   cloud_init_template = "base"
 
-  protect_vm = true
+  protect_vm = false
 }

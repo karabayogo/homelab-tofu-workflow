@@ -202,9 +202,9 @@ variable "vm_started" {
 }
 
 variable "protect_vm" {
-  description = "Prevent accidental VM destroy. Lifecycle protections are static in this module."
+  description = "Prevent accidental VM destroy via tofu lifecycle. Set false to allow tofu destroy."
   type        = bool
-  default     = true
+  default     = false
 }
 
 # ── Node labels for k3s registration ──
