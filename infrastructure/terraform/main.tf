@@ -284,12 +284,12 @@ module "openclaw" {
 
   # Mode A: cloud-image provisioner credentials
   proxmox_host  = "192.168.1.50"
-  ssh_key_path  = "/home/moltbot/.ssh/pve-kai"
+  ssh_key_path  = "/home/moltbot/.ssh/id_ed25519"
   proxmox_node  = "pve"
 
   # Cloud-init admin user and SSH key
-  admin_user      = "kai"
-  ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBMxi6BHoubPcyMHTE3Ipa0G2Ivc9jAcJq0ks+H9BC19 kai-to-proxmox-root"
+  admin_user      = "henesink"
+  ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
 
   # Workload profile
