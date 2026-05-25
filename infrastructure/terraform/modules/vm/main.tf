@@ -31,7 +31,6 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
         hostname          = var.vm_name
         ssh_pub_key       = var.ssh_pub_key
         tofu_deploy_key   = var.tofu_deploy_key
-        pve_kai_key       = var.pve_kai_key
         k3s_version       = var.k3s_version
         k3s_token         = var.k3s_token
         static_ip         = var.static_ip
