@@ -284,7 +284,6 @@ module "openclaw" {
 
   admin_user      = "henesink"
   ssh_pub_key     = file("${path.root}/ssh-keys/id_ed25519.pub")
-  pve_kai_key     = file("${path.root}/ssh-keys/pve-kai.pub")
 
   # Workload profile
   k3s_enabled         = false
