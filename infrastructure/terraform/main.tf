@@ -280,7 +280,7 @@ module "openclaw" {
   tags              = ["standalone"]
   os_version        = "24.04"
   static_ip         = "192.168.1.252"
-  vm_started        = true
+  vm_started        = false
 
   # Mode A: cloud-image provisioner credentials
   proxmox_host  = "192.168.1.50"
