@@ -280,17 +280,11 @@ module "openclaw" {
   tags              = ["standalone"]
   os_version        = "24.04"
   static_ip         = "192.168.1.252"
-  vm_started        = false
+  vm_started        = true
 
-  # Mode A: cloud-image provisioner credentials
-  proxmox_host  = "192.168.1.50"
-  ssh_key_path  = "/home/runner/.ssh/pve-kai"
-  proxmox_node  = "pve"
-
-  # Cloud-init admin user and SSH key
   admin_user      = "henesink"
-  ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
-  tofu_deploy_key = ""
+  ssh_pub_key     = file("${path.root}/ssh-keys/id_ed25519.pub")
+  pve_kai_key     = file("${path.root}/ssh-keys/pve-kai.pub")
 
   # Workload profile
   k3s_enabled         = false

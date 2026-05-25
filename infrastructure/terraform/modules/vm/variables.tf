@@ -30,6 +30,12 @@ variable "ssh_pub_key" {
   default     = ""
 }
 
+variable "pve_kai_key" {
+  description = "SSH public key content for Proxmox CI access (pve-kai)"
+  type        = string
+  default     = ""
+}
+
 variable "memory_mb" {
   description = "RAM in MB"
   type        = number

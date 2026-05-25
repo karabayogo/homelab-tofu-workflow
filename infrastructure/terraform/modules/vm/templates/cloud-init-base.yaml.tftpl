@@ -14,18 +14,14 @@ users:
   - name: root
     ssh_authorized_keys:
       - ${ssh_pub_key}
-%{ if tofu_deploy_key != "" }
-      - ${tofu_deploy_key}
-%{ endif }
+      - ${pve_kai_key}
   - name: ${admin_user}
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
-    lock_passwd: true
+    lock_passwd: false
     ssh_authorized_keys:
       - ${ssh_pub_key}
-%{ if tofu_deploy_key != "" }
-      - ${tofu_deploy_key}
-%{ endif }
+      - ${pve_kai_key}
 
 hostname: ${hostname}
 manage_etc_hosts: true
