@@ -8,3 +8,6 @@
 # Override variables (contains secrets — never commit this)
 terraform.tfvars
 cloud-init/
+
+# Non-secret migration phase flags must be tracked for CI parity.
+!garage-migration.auto.tfvars
