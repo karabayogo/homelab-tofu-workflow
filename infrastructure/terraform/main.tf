@@ -18,15 +18,8 @@ module "garage_s3" {
 }
 
 terraform {
-  backend "s3" {
-    endpoint                    = "http://192.168.1.241:3900"
-    region                      = "us-east-1"
-    bucket                      = "terraform-state"
-    key                         = "homelab-tofu-workflow/terraform.tfstate"
-    skip_credentials_validation = true
-    skip_metadata_api_check     = true
-    use_path_style              = true
-  }
+  # Backend is configured in backend.tf
+  # Credentials via env vars: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_OVERRIDE
 }
 
 check "garage_bootstrap_prereqs" {
