@@ -25,6 +25,11 @@ jobs:
       GARAGE_ACCESS_KEY: ${{ secrets.GARAGE_ACCESS_KEY }}
       GARAGE_SECRET_KEY: ${{ secrets.GARAGE_SECRET_KEY }}
       GARAGE_ENDPOINT_URL_OVERRIDE: ${{ secrets.GARAGE_ENDPOINT_URL_OVERRIDE }}
+      VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+      VAULT_APPROLE_ROLE_ID: ${{ secrets.VAULT_APPROLE_ROLE_ID }}
+      VAULT_APPROLE_SECRET_ID: ${{ secrets.VAULT_APPROLE_SECRET_ID }}
+      VAULT_MIGRATION_APPROLE_ROLE_ID: ${{ secrets.VAULT_MIGRATION_APPROLE_ROLE_ID }}
+      VAULT_MIGRATION_APPROLE_SECRET_ID: ${{ secrets.VAULT_MIGRATION_APPROLE_SECRET_ID }}
       K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
 
   # Phase 5: Drift detection — runs tofu plan and posts summary as PR comment
@@ -51,6 +56,11 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.GARAGE_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.GARAGE_SECRET_KEY }}
           AWS_ENDPOINT_URL_OVERRIDE: ${{ secrets.GARAGE_ENDPOINT_URL_OVERRIDE }}
+          TF_VAR_vault_addr: ${{ secrets.VAULT_ADDR }}
+          TF_VAR_vault_approle_role_id: ${{ secrets.VAULT_APPROLE_ROLE_ID }}
+          TF_VAR_vault_approle_secret_id: ${{ secrets.VAULT_APPROLE_SECRET_ID }}
+          TF_VAR_vault_migration_approle_role_id: ${{ secrets.VAULT_MIGRATION_APPROLE_ROLE_ID }}
+          TF_VAR_vault_migration_approle_secret_id: ${{ secrets.VAULT_MIGRATION_APPROLE_SECRET_ID }}
         run: |
           cd infrastructure/terraform
           tofu init -backend=false 2>&1 | tail -5
