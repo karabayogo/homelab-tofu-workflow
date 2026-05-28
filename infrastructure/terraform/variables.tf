@@ -62,3 +62,78 @@ variable "k3s_token" {
   sensitive   = true
   default     = ""
 }
+
+# ── Vault AppRole bootstrap for Garage nodes ──
+
+variable "vault_addr" {
+  description = "Reachable Vault API endpoint for Garage node bootstrap (must be reachable from VM LAN)"
+  type        = string
+  nullable    = false
+  default     = ""
+}
+
+variable "vault_approle_role_id" {
+  description = "Vault AppRole Role ID used by Garage nodes to fetch secret/data/garage/cluster"
+  type        = string
+  sensitive   = true
+  nullable    = false
+  default     = ""
+}
+
+variable "vault_approle_secret_id" {
+  description = "Vault AppRole Secret ID used by Garage nodes to fetch secret/data/garage/cluster"
+  type        = string
+  sensitive   = true
+  nullable    = false
+  default     = ""
+}
+
+# ── Vault AppRole bootstrap for migration helper (least privilege) ──
+
+variable "vault_migration_approle_role_id" {
+  description = "Vault AppRole Role ID used by migration helper to read secret/data/garage-s3 and secret/data/garage-s3-new"
+  type        = string
+  sensitive   = true
+  nullable    = false
+  default     = ""
+}
+
+variable "vault_migration_approle_secret_id" {
+  description = "Vault AppRole Secret ID used by migration helper to read secret/data/garage-s3 and secret/data/garage-s3-new"
+  type        = string
+  sensitive   = true
+  nullable    = false
+  default     = ""
+}
+
+# ── Garage migration rollout flags (GitOps phase control) ──
+
+variable "enable_garage_cluster" {
+  description = "Enable provisioning of Garage cluster VMs (901/902/903)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_migration_helper" {
+  description = "Enable provisioning of migration helper VM (904)"
+  type        = bool
+  default     = false
+}
+
+variable "start_garage_nodes" {
+  description = "Start Garage cluster VMs (901/902/903) after initial provisioning"
+  type        = bool
+  default     = false
+}
+
+variable "start_migration_helper" {
+  description = "Start migration helper VM (904) after initial provisioning"
+  type        = bool
+  default     = false
+}
+
+variable "protect_garage_nodes" {
+  description = "Enable Proxmox VM protection on Garage nodes (set false during bootstrap/reprovision, true after migration cutover)"
+  type        = bool
+  default     = true
+}

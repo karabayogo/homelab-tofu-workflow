@@ -232,12 +232,56 @@ variable "k3s_enabled" {
 }
 
 variable "cloud_init_template" {
-  description = "Cloud-init template profile: master, worker, or base."
+  description = "Cloud-init template profile: master, worker, base, garage, or migration-helper."
   type        = string
   default     = "worker"
 
   validation {
-    condition     = contains(["master", "worker", "base"], var.cloud_init_template)
-    error_message = "cloud_init_template must be one of: master, worker, base"
+    condition     = contains(["master", "worker", "base", "garage", "migration-helper"], var.cloud_init_template)
+    error_message = "cloud_init_template must be one of: master, worker, base, garage, migration-helper"
   }
+}
+
+# ── Garage S3 variables ──
+
+variable "garage_version" {
+  description = "Garage S3 version to install (e.g., v2.2.0)"
+  type        = string
+  default     = "v2.2.0"
+}
+
+variable "rpc_secret" {
+  description = "Garage RPC secret for inter-node communication (must match across all Garage nodes)"
+  type        = string
+  sensitive   = true
+  default     = ""  # Must be set explicitly for garage template
+}
+
+variable "admin_token" {
+  description = "Garage admin API token (generate with: openssl rand -hex 32)"
+  type        = string
+  sensitive   = true
+  default     = ""  # Must be set explicitly for garage template
+}
+
+# ── Vault AppRole (used by cloud-init-garage.yaml.tftpl to fetch real secrets at boot) ──
+
+variable "vault_addr" {
+  description = "Vault server address (e.g., https://vault.ariesmcrae.com)"
+  type        = string
+  default     = ""
+}
+
+variable "vault_approle_role_id" {
+  description = "Vault AppRole Role ID for Garage secret fetch (read-only access to secret/data/garage/cluster)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "vault_approle_secret_id" {
+  description = "Vault AppRole Secret ID for Garage secret fetch"
+  type        = string
+  sensitive   = true
+  default     = ""
 }

@@ -1,9 +1,10 @@
 #!/bin/sh
 # vm-provisioner.sh — writes Ubuntu cloud-image to a Proxmox ZFS disk.
-# Usage: vm-provisioner.sh <vm_id> <vm_name> <os_version> <pve_host> <ssh_key_path>
+# Usage: vm-provisioner.sh <vm_id> <vm_name> <os_version> <pve_host> <ssh_key_path> [start_after_provision]
 #
 # IDEMPOTENT: safe to run on running or stopped VMs. Stops VM if needed,
-# writes the cloud-image to the OS disk (largest zvol, not EFI), restarts.
+# writes the cloud-image to the OS disk (largest zvol, not EFI), and
+# optionally starts the VM to run cloud-init.
 set -eu
 
 VMID="$1"
@@ -11,6 +12,7 @@ VM_NAME="$2"
 OS_VERSION="$3"
 PVE_HOST="$4"
 SSH_KEY="$5"
+START_AFTER_PROVISION="${6:-true}"
 
 SSH_CMD="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ${SSH_KEY}"
 IMAGE_CACHE="/tmp/vm-gitops-ubuntu-${OS_VERSION}-cloudimg-amd64.img"
@@ -67,7 +69,17 @@ ${SSH_CMD} "root@${PVE_HOST}" "
 "
 
 # Step 5: Start VM for cloud-init
-echo "[vm-gitops] Starting VM ${VMID} for cloud-init..."
-${SSH_CMD} "root@${PVE_HOST}" "qm start ${VMID} 2>/dev/null || echo '[vm-gitops] VM already started'"
-
-echo "[vm-gitops] VM ${VMID} provisioned. Cloud-init will handle k3s join on first boot."
+case "${START_AFTER_PROVISION}" in
+  true)
+    echo "[vm-gitops] Starting VM ${VMID} for cloud-init..."
+    ${SSH_CMD} "root@${PVE_HOST}" "qm start ${VMID} 2>/dev/null || echo '[vm-gitops] VM already started'"
+    echo "[vm-gitops] VM ${VMID} provisioned. Cloud-init will handle k3s join on first boot."
+    ;;
+  false)
+    echo "[vm-gitops] VM ${VMID} provisioned and left stopped (start_after_provision=false)."
+    ;;
+  *)
+    echo "[vm-gitops] Invalid start_after_provision='${START_AFTER_PROVISION}' (expected true|false)." >&2
+    exit 2
+    ;;
+esac

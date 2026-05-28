@@ -10,7 +10,7 @@
 # ============================================================
 
 provider "proxmox" {
-  endpoint = "https://${var.proxmox_host}:${var.proxmox_port}/"
+  endpoint  = "https://${var.proxmox_host}:${var.proxmox_port}/"
   api_token = var.proxmox_api_token
   insecure  = true
 

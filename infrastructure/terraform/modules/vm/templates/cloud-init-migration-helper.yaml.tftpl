@@ -1,0 +1,172 @@
+#cloud-config
+# MIGRATION_HELPER — ephemeral helper for Garage Phase 2 data migration.
+# No k3s. Fetches old/new S3 creds from Vault and writes rclone config.
+
+hostname: ${hostname}
+manage_etc_hosts: true
+
+package_update: true
+packages:
+  - qemu-guest-agent
+  - curl
+  - jq
+  - rclone
+
+disable_root: false
+users:
+  - name: root
+    ssh_authorized_keys:
+      - ${ssh_pub_key}
+  - name: ${admin_user}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    ssh_authorized_keys:
+      - ${ssh_pub_key}
+
+ssh_pwauth: false
+
+write_files:
+  - path: /opt/migration-fetch-s3-credentials.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      VAULT_ADDR="${vault_addr}"
+      APPROLE_ROLE_ID="${vault_approle_role_id}"
+      APPROLE_SECRET_ID="${vault_approle_secret_id}"
+      OLD_SECRET_PATH="secret/data/garage-s3"
+      NEW_SECRET_PATH="secret/data/garage-s3-new"
+      RCLONE_DIR="/root/.config/rclone"
+      RCLONE_CONF="$RCLONE_DIR/rclone.conf"
+
+      if [ -z "$VAULT_ADDR" ] || [ -z "$APPROLE_ROLE_ID" ] || [ -z "$APPROLE_SECRET_ID" ]; then
+        echo "ERROR: migration helper Vault bootstrap inputs are empty"
+        exit 1
+      fi
+
+      VAULT_TOKEN=$(curl -fsSL -X POST \
+        "$${VAULT_ADDR}/v1/auth/approle/login" \
+        -d "{\"role_id\":\"$APPROLE_ROLE_ID\",\"secret_id\":\"$APPROLE_SECRET_ID\"}" \
+        | jq -r '.auth.client_token')
+
+      if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
+        echo "ERROR: failed to obtain Vault token via AppRole"
+        exit 1
+      fi
+
+      OLD_JSON=$(curl -fsSL -H "X-Vault-Token: $VAULT_TOKEN" "$${VAULT_ADDR}/v1/$OLD_SECRET_PATH")
+      NEW_JSON=$(curl -fsSL -H "X-Vault-Token: $VAULT_TOKEN" "$${VAULT_ADDR}/v1/$NEW_SECRET_PATH")
+
+      OLD_ACCESS_KEY=$(echo "$OLD_JSON" | jq -r '.data.data["GARAGE_ACCESS_KEY"] // .data.data["access-key"] // empty')
+      OLD_SECRET_KEY=$(echo "$OLD_JSON" | jq -r '.data.data["GARAGE_SECRET_KEY"] // .data.data["secret-key"] // empty')
+      OLD_STATE_ACCESS_KEY=$(echo "$OLD_JSON" | jq -r '.data.data["TOFU_BACKEND_ACCESS_KEY"] // .data.data["GARAGE_ACCESS_KEY"] // .data.data["access-key"] // empty')
+      OLD_STATE_SECRET_KEY=$(echo "$OLD_JSON" | jq -r '.data.data["TOFU_BACKEND_SECRET_KEY"] // .data.data["GARAGE_SECRET_KEY"] // .data.data["secret-key"] // empty')
+      OLD_ENDPOINT=$(echo "$OLD_JSON" | jq -r '.data.data["AWS_ENDPOINTS"] // .data.data["endpoint"] // "http://192.168.1.230:3900"')
+
+      NEW_ACCESS_KEY=$(echo "$NEW_JSON" | jq -r '.data.data["TOFU_BACKEND_ACCESS_KEY"] // .data.data["GARAGE_ACCESS_KEY"] // .data.data["access-key"] // empty')
+      NEW_SECRET_KEY=$(echo "$NEW_JSON" | jq -r '.data.data["TOFU_BACKEND_SECRET_KEY"] // .data.data["GARAGE_SECRET_KEY"] // .data.data["secret-key"] // empty')
+      NEW_STATE_ACCESS_KEY=$(echo "$NEW_JSON" | jq -r '.data.data["TOFU_BACKEND_ACCESS_KEY"] // .data.data["GARAGE_ACCESS_KEY"] // .data.data["access-key"] // empty')
+      NEW_STATE_SECRET_KEY=$(echo "$NEW_JSON" | jq -r '.data.data["TOFU_BACKEND_SECRET_KEY"] // .data.data["GARAGE_SECRET_KEY"] // .data.data["secret-key"] // empty')
+      NEW_LONGHORN_ACCESS_KEY=$(echo "$NEW_JSON" | jq -r '.data.data["GARAGE_ACCESS_KEY"] // .data.data["TOFU_BACKEND_ACCESS_KEY"] // .data.data["access-key"] // empty')
+      NEW_LONGHORN_SECRET_KEY=$(echo "$NEW_JSON" | jq -r '.data.data["GARAGE_SECRET_KEY"] // .data.data["TOFU_BACKEND_SECRET_KEY"] // .data.data["secret-key"] // empty')
+      NEW_ENDPOINT=$(echo "$NEW_JSON" | jq -r '.data.data["AWS_ENDPOINTS"] // .data.data["endpoint"] // "http://192.168.1.241:3900"')
+
+      for v in OLD_ACCESS_KEY OLD_SECRET_KEY OLD_STATE_ACCESS_KEY OLD_STATE_SECRET_KEY OLD_ENDPOINT NEW_ACCESS_KEY NEW_SECRET_KEY NEW_STATE_ACCESS_KEY NEW_STATE_SECRET_KEY NEW_LONGHORN_ACCESS_KEY NEW_LONGHORN_SECRET_KEY NEW_ENDPOINT; do
+        if [ -z "$${!v}" ] || [ "$${!v}" = "null" ]; then
+          echo "ERROR: missing required field in Vault response: $v"
+          exit 1
+        fi
+      done
+
+      umask 077
+      mkdir -p "$RCLONE_DIR"
+      cat > "$RCLONE_CONF" <<EOF
+      [garage-old]
+      type = s3
+      provider = Other
+      env_auth = false
+      access_key_id = $OLD_ACCESS_KEY
+      secret_access_key = $OLD_SECRET_KEY
+      endpoint = $OLD_ENDPOINT
+      region = us-east-1
+      acl = private
+      no_check_bucket = true
+
+      [garage-old-state]
+      type = s3
+      provider = Other
+      env_auth = false
+      access_key_id = $OLD_STATE_ACCESS_KEY
+      secret_access_key = $OLD_STATE_SECRET_KEY
+      endpoint = $OLD_ENDPOINT
+      region = us-east-1
+      acl = private
+      no_check_bucket = true
+
+      [garage-new]
+      type = s3
+      provider = Other
+      env_auth = false
+      access_key_id = $NEW_LONGHORN_ACCESS_KEY
+      secret_access_key = $NEW_LONGHORN_SECRET_KEY
+      endpoint = $NEW_ENDPOINT
+      region = us-east-1
+      acl = private
+      no_check_bucket = true
+
+      [garage-new-state]
+      type = s3
+      provider = Other
+      env_auth = false
+      access_key_id = $NEW_STATE_ACCESS_KEY
+      secret_access_key = $NEW_STATE_SECRET_KEY
+      endpoint = $NEW_ENDPOINT
+      region = us-east-1
+      acl = private
+      no_check_bucket = true
+      EOF
+
+      chmod 0600 "$RCLONE_CONF"
+
+      cat > /etc/default/migration-helper <<EOF
+      GARAGE_OLD_ENDPOINT=$OLD_ENDPOINT
+      GARAGE_NEW_ENDPOINT=$NEW_ENDPOINT
+      EOF
+      chmod 0600 /etc/default/migration-helper
+
+  - path: /opt/migration-sync.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      if [ $# -ne 1 ]; then
+        echo "Usage: $0 <bucket-name>"
+        exit 2
+      fi
+
+      BUCKET="$1"
+      SRC_REMOTE="garage-old"
+      DST_REMOTE="garage-new"
+      if [ "$BUCKET" = "terraform-state" ]; then
+        SRC_REMOTE="garage-old-state"
+        DST_REMOTE="garage-new-state"
+      fi
+      rclone sync "$SRC_REMOTE:$BUCKET" "$DST_REMOTE:$BUCKET" \
+        --s3-no-check-bucket \
+        --create-empty-src-dirs \
+        --transfers 16 \
+        --checkers 32 \
+        --checksum
+
+runcmd:
+  - [systemctl, enable, qemu-guest-agent]
+  - [systemctl, start, qemu-guest-agent]
+  - [bash, -c, "/opt/migration-fetch-s3-credentials.sh"]
+
+power_state:
+  mode: reboot
+  condition: true
+  delay: 5

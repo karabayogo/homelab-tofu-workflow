@@ -1,0 +1,216 @@
+#cloud-config
+# GARAGE_STORAGE_NODE — standalone Garage S3 storage node
+# No k3s, no k8s labels. Pure S3 object storage.
+#
+# Secret sourcing (Vault AppRole):
+# - AppRole credentials are passed as cloud-init template variables
+# - Real Garage secrets stay in Vault at secret/data/garage/cluster
+# - At boot, /opt/garage-fetch-secrets.sh writes /etc/default/garage-secrets
+# - garage.service loads that env file and starts with GARAGE_RPC_SECRET/GARAGE_ADMIN_TOKEN
+#
+hostname: ${hostname}
+manage_etc_hosts: true
+
+package_update: true
+packages:
+  - qemu-guest-agent
+  - curl
+  - wget
+  - jq
+  - ufw
+
+disable_root: false
+users:
+  - name: root
+    ssh_authorized_keys:
+      - ${ssh_pub_key}
+
+ssh_pwauth: false
+
+write_files:
+  - path: /opt/garage-data-disk.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      DISK="/dev/sdb"
+      MOUNT_POINT="/var/lib/garage"
+
+      for i in $(seq 1 30); do
+        if [ -b "$DISK" ]; then
+          break
+        fi
+        sleep 2
+      done
+
+      if [ ! -b "$DISK" ]; then
+        echo "ERROR: $DISK not found after 60s"
+        exit 1
+      fi
+
+      if ! blkid "$DISK" > /dev/null 2>&1; then
+        mkfs.ext4 -F -L garage-data "$DISK"
+      fi
+
+      mkdir -p "$MOUNT_POINT" "$MOUNT_POINT/data" "$MOUNT_POINT/meta"
+      if ! mountpoint -q "$MOUNT_POINT"; then
+        mount "$DISK" "$MOUNT_POINT"
+      fi
+
+      if ! awk '$2 == "/var/lib/garage" { found=1 } END { exit found ? 0 : 1 }' /etc/fstab; then
+        echo "$DISK $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
+      fi
+
+      chown root:root "$MOUNT_POINT"
+      chmod 0755 "$MOUNT_POINT"
+
+  - path: /opt/garage-install.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      GARAGE_VERSION="${garage_version}"
+      DEST="/usr/local/bin/garage"
+
+      if [ -x "$DEST" ]; then
+        CURRENT_VERSION="$($DEST --version 2>/dev/null | awk '{print $2}')"
+        if [ "$CURRENT_VERSION" = "$GARAGE_VERSION" ]; then
+          echo "Garage $GARAGE_VERSION already installed — skipping"
+          exit 0
+        fi
+      fi
+
+      DOWNLOAD_URL="https://garagehq.deuxfleurs.fr/_releases/${garage_version}/x86_64-unknown-linux-musl/garage"
+      TMP_DEST="$(mktemp)"
+      curl -fsSL --retry 5 --retry-all-errors --connect-timeout 10 "$DOWNLOAD_URL" -o "$TMP_DEST"
+      install -m 0755 "$TMP_DEST" "$DEST"
+      rm -f "$TMP_DEST"
+
+      INSTALLED_VERSION="$($DEST --version 2>/dev/null | awk '{print $2}')"
+      if [ "$INSTALLED_VERSION" != "$GARAGE_VERSION" ]; then
+        echo "ERROR: installed Garage version '$INSTALLED_VERSION' does not match expected '$GARAGE_VERSION'"
+        exit 1
+      fi
+      "$DEST" --version
+
+  - path: /opt/garage-fetch-secrets.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      VAULT_ADDR="${vault_addr}"
+      APPROLE_ROLE_ID="${vault_approle_role_id}"
+      APPROLE_SECRET_ID="${vault_approle_secret_id}"
+      SECRET_PATH="secret/data/garage/cluster"
+      ENV_FILE="/etc/default/garage-secrets"
+
+      if [ -z "$APPROLE_ROLE_ID" ] || [ -z "$APPROLE_SECRET_ID" ]; then
+        echo "ERROR: Vault AppRole credentials are empty"
+        exit 1
+      fi
+
+      VAULT_TOKEN=$(curl -fsSL -X POST \
+        "$${VAULT_ADDR}/v1/auth/approle/login" \
+        -d "{\"role_id\": \"$APPROLE_ROLE_ID\", \"secret_id\": \"$APPROLE_SECRET_ID\"}" \
+        | jq -r '.auth.client_token')
+
+      if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
+        echo "ERROR: Failed to obtain Vault token via AppRole"
+        exit 1
+      fi
+
+      SECRETS_JSON=$(curl -fsSL \
+        -H "X-Vault-Token: $VAULT_TOKEN" \
+        "$${VAULT_ADDR}/v1/$SECRET_PATH")
+
+      RPC_SECRET=$(echo "$SECRETS_JSON" | jq -r '.data.data["rpc-secret"]')
+      ADMIN_TOKEN=$(echo "$SECRETS_JSON" | jq -r '.data.data["admin-token"]')
+
+      if [ -z "$RPC_SECRET" ] || [ "$RPC_SECRET" = "null" ]; then
+        echo "ERROR: Missing rpc-secret in Vault response"
+        exit 1
+      fi
+      if [ -z "$ADMIN_TOKEN" ] || [ "$ADMIN_TOKEN" = "null" ]; then
+        echo "ERROR: Missing admin-token in Vault response"
+        exit 1
+      fi
+
+      TMP_ENV="$(mktemp)"
+      umask 077
+      {
+        echo "GARAGE_RPC_SECRET=$RPC_SECRET"
+        echo "GARAGE_ADMIN_TOKEN=$ADMIN_TOKEN"
+      } > "$TMP_ENV"
+
+      install -m 0600 "$TMP_ENV" "$ENV_FILE"
+      rm -f "$TMP_ENV"
+
+  - path: /etc/garage.toml
+    permissions: "0600"
+    content: |
+      metadata_dir = "/var/lib/garage/meta"
+      data_dir = "/var/lib/garage/data"
+      db_engine = "lmdb"
+      replication_factor = 3
+      compression_level = 1
+
+      rpc_bind_addr = "[::]:3901"
+      rpc_public_addr = "${static_ip}:3901"
+
+      [s3_api]
+      s3_region = "us-east-1"
+      api_bind_addr = "[::]:3900"
+      root_domain = ".s3.garage"
+
+      [s3_web]
+      bind_addr = "[::]:3902"
+      root_domain = ".web.garage"
+      index = "index.html"
+
+      [admin]
+      api_bind_addr = "[::]:3903"
+
+  - path: /etc/systemd/system/garage.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Garage S3 object storage
+      After=network-online.target
+      Wants=network-online.target
+      RequiresMountsFor=/var/lib/garage
+
+      [Service]
+      Type=simple
+      ExecStartPre=/opt/garage-fetch-secrets.sh
+      EnvironmentFile=-/etc/default/garage-secrets
+      ExecStart=/usr/local/bin/garage server
+      Restart=on-failure
+      RestartSec=5s
+      Environment="RUST_LOG=info"
+
+      NoNewPrivileges=true
+      PrivateTmp=true
+      ProtectSystem=strict
+      ProtectHome=true
+      ReadWritePaths=/var/lib/garage /etc/default
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - [ufw, disable]
+  - [bash, -c, "bash /opt/garage-data-disk.sh"]
+  - [bash, -c, "bash /opt/garage-install.sh"]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, garage]
+  - [systemctl, start, garage]
+  - [systemctl, enable, qemu-guest-agent]
+  - [systemctl, start, qemu-guest-agent]
+
+power_state:
+  mode: reboot
+  condition: true
+  delay: 5
