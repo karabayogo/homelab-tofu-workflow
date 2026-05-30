@@ -160,6 +160,16 @@ write_files:
       rpc_bind_addr = "[::]:3901"
       rpc_public_addr = "${static_ip}:3901"
 
+      # bootstrap_peers — node IDs are immutable after first garage init
+      # (stored on persistent data disk at /var/lib/garage/meta/).
+      # On rebuild, these IDs survive as long as the data disk is intact.
+      # Full DR (wiped disk): re-init required, new IDs generated, update this list.
+      bootstrap_peers = [
+          "0fe8e228180abde50add381a1e08b5ddac5b83880caf68192d0a177d4b9990d7@192.168.1.241:3901",
+          "4b84ced56e58a86254df4497eeccb76547411414dd5af8ad5478f3eef2cb2244@192.168.1.242:3901",
+          "0c28132d0a0e777d1f25cda85480d994115ddbaa3bd01bb1bb45aa5f832dfaef@192.168.1.243:3901",
+      ]
+
       [s3_api]
       s3_region = "us-east-1"
       api_bind_addr = "[::]:3900"
@@ -206,7 +216,9 @@ runcmd:
   - [bash, -c, "bash /opt/garage-install.sh"]
   - [systemctl, daemon-reload]
   - [systemctl, enable, garage]
-  - [systemctl, start, garage]
+  # garage daemon is NOT started here — sequential bootstrap starts it
+  # after cluster init (n1) or node connect (n2/n3).
+  # See plan/01-phase1-bootstrap.md for the bootstrap sequence.
   - [systemctl, enable, qemu-guest-agent]
   - [systemctl, start, qemu-guest-agent]
 
