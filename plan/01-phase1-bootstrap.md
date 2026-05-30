@@ -6,10 +6,14 @@
 - Real secrets (rpc_secret, admin_token) fetched from Vault via AppRole at first boot
 
 **Prerequisites (must be completed BEFORE this doc):**
-- [ ] Phase 0: Vault AppRole + policy + `secret/data/garage/cluster` seeded (see `02-garage-migration-plan.md` Phase 2)
-- [ ] `terraform.tfvars` has `vault_approle_role_id` + `vault_approle_secret_id` set
-- [ ] `tofu apply` has been run (VMs 901/902/903 created, cloud-init completed on all three)
-- [ ] Migration helper VM 904 created (used in Phase 2)
+- [x] ✅ Phase 0: Vault AppRole + policy + `secret/data/garage/cluster` seeded — DONE (2026-05-27)
+- [x] ✅ `tofu apply` has been run (VMs 901/902/903 created, cloud-init completed on all three) — DONE
+- [x] ✅ `systemctl start garage` REMOVED from cloud-init (commit 0fe9f94) — daemon stays dead until Step 1.2
+- [x] ✅ `bootstrap_peers` ADDED to `garage.toml` — nodes auto-discover on restart (no manual `node connect`)
+- [x] ✅ Gateway tags assigned to all 3 nodes (layout V2, 2026-05-30 audit)
+- [x] ✅ Tofu backend migrated to new cluster (192.168.1.241:3900) — `~/.aws/credentials` updated
+- [ ] ❌ Migration helper VM 904 NOT created — buckets and keys already exist on new cluster, VM 904 may not be needed
+- [ ] ❌ Phase 0 doc (`00a-phase0-tofu-state-migration.md`) NOT created — VM 900 already destroyed; state migration was manual
 
 ---
 
