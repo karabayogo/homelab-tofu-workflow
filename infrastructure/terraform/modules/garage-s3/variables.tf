@@ -3,9 +3,9 @@
 # ============================================================
 
 variable "admin_endpoint" {
-  description = "Garage S3 API endpoint (e.g. http://192.168.1.230:3900)"
+  description = "Garage S3 API endpoint (e.g. http://192.168.1.241:3900 — new 3-node cluster gateway)"
   type        = string
-  default     = "http://192.168.1.230:3900"
+  default     = "http://192.168.1.241:3900"
 }
 
 variable "admin_key_id" {
