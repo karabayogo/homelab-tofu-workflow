@@ -28,6 +28,14 @@ write_files:
       net.ipv4.ip_forward = 1
 
 runcmd:
+  # === START Longhorn multipath hardening ===
+  # Prevent dm_multipath from interfering with Longhorn raw block devices
+  - systemctl stop multipathd.socket multipathd.service || true
+  - systemctl disable multipathd.socket multipathd.service || true
+  - systemctl mask multipathd.socket multipathd.service || true
+  - echo 'blacklist dm_multipath' > /etc/modprobe.d/99-longhorn-no-multipath.conf || true
+  # === END Longhorn multipath hardening ===
+
   # Kernel params
   - sysctl --system
 
