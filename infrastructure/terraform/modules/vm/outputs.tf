@@ -17,6 +17,11 @@ output "vm_ip" {
   value       = ""
 }
 
+output "static_ip" {
+  description = "Configured static IP for the VM"
+  value       = var.static_ip
+}
+
 output "proxmox_node" {
   description = "Proxmox node name"
   value       = var.proxmox_node

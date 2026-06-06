@@ -32,6 +32,45 @@ jobs:
       VAULT_MIGRATION_APPROLE_SECRET_ID: ${{ secrets.VAULT_MIGRATION_APPROLE_SECRET_ID }}
       K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
 
+  k8s-multipath-hardening:
+    needs: tofu
+    if: needs.tofu.result == 'success'
+    runs-on: self-hosted
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.GARAGE_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.GARAGE_SECRET_KEY }}
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT_URL_OVERRIDE: ${{ secrets.GARAGE_ENDPOINT_URL_OVERRIDE }}
+      AWS_EC2_METADATA_SERVICE_ENDPOINT: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.11.6"
+
+      - name: Write node SSH key
+        run: |
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
+          chmod 600 "$HOME/.ssh/pve-kai"
+
+      - name: OpenTofu init
+        run: |
+          cd infrastructure/terraform
+          tofu init
+
+      - name: Verify multipath hardening on PRs
+        if: github.event_name == 'pull_request'
+        run: bash scripts/enforce-k8s-multipath-hardening.sh --check
+
+      - name: Enforce multipath hardening on managed k8s nodes
+        if: github.event_name != 'pull_request'
+        run: bash scripts/enforce-k8s-multipath-hardening.sh --enforce
+
   # Phase 5: Drift detection — runs tofu plan and posts summary as PR comment
   # Only runs on scheduled trigger (not on push/PR to avoid noise)
   drift-check:
