@@ -90,10 +90,10 @@ inventory_rows() {
   local inventory_json=""
 
   if inventory_json="$(tofu output -json k8s_node_inventory 2>/dev/null)"; then
-    python3 - <<'PY' <<<"$inventory_json"
+    python3 - "$inventory_json" <<'PY'
 import json, sys
 
-for item in json.loads(sys.stdin.read()):
+for item in json.loads(sys.argv[1]):
     print(f"{item['name']}\t{item['ip']}")
 PY
     return 0
@@ -149,11 +149,35 @@ enforce_node() {
   local remote_cmd='
     set -e
     if [ "$(id -u)" -ne 0 ]; then SUDO=sudo; else SUDO=""; fi
+    stale_sessions="$($SUDO iscsiadm -m session -P 1 2>/dev/null | awk "
+      /^Target: / { target=\$2; portal=\"\"; stale=0 }
+      /^Current Portal: / { portal=\$3; sub(/,.*/, \"\", portal) }
+      /iSCSI Session State:/ { if (\$NF == \"FREE\") stale=1 }
+      /Internal iscsid Session State:/ { if (\$NF == \"REOPEN\") stale=1 }
+      /^$/ {
+        if (stale && target != \"\" && portal != \"\") {
+          printf \"%s\\t%s\\n\", target, portal
+        }
+        target=\"\"; portal=\"\"; stale=0
+      }
+      END {
+        if (stale && target != \"\" && portal != \"\") {
+          printf \"%s\\t%s\\n\", target, portal
+        }
+      }
+    " || true)"
+    while IFS="$(printf "\t")" read -r target portal; do
+      [ -z "${target:-}" ] && continue
+      $SUDO iscsiadm -m node -T "$target" -p "$portal" --logout || true
+      $SUDO iscsiadm -m node -T "$target" -p "$portal" -o delete || true
+    done <<EOF
+$stale_sessions
+EOF
     $SUDO systemctl stop multipathd.socket multipathd.service || true
     $SUDO systemctl disable multipathd.socket multipathd.service || true
     $SUDO systemctl mask multipathd.socket multipathd.service || true
     $SUDO multipath -F || true
-    $SUDO modprobe -r dm_multipath || true
+    $SUDO modprobe -r dm_service_time dm_multipath || true
     printf "%s\n" "blacklist dm_multipath" | $SUDO tee /etc/modprobe.d/99-longhorn-no-multipath.conf >/dev/null
     enabled="$($SUDO systemctl is-enabled multipathd.service multipathd.socket 2>/dev/null | paste -sd, -)"
     active="$($SUDO systemctl is-active multipathd.service multipathd.socket 2>/dev/null | paste -sd, -)"
