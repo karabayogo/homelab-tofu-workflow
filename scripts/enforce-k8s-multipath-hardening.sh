@@ -4,6 +4,8 @@ set -euo pipefail
 MODE="${1:---check}"
 SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/pve-kai}"
 TERRAFORM_DIR="${TERRAFORM_DIR:-infrastructure/terraform}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 case "$MODE" in
   --check|--enforce) ;;
@@ -220,7 +222,7 @@ is_hardened() {
   [ "$session_state" = "clean" ] || return 1
 }
 
-cd "$TERRAFORM_DIR"
+cd "$REPO_ROOT/$TERRAFORM_DIR"
 
 FAILURES=0
 while IFS=$'\t' read -r node_name node_ip enabled_csv active_csv blacklist_state module_state session_state; do
