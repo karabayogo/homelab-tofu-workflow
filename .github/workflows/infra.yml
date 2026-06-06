@@ -65,11 +65,11 @@ jobs:
 
       - name: Verify multipath hardening on PRs
         if: github.event_name == 'pull_request'
-        run: bash scripts/enforce-k8s-multipath-hardening.sh --check
+        run: bash "$GITHUB_WORKSPACE/scripts/enforce-k8s-multipath-hardening.sh" --check
 
       - name: Enforce multipath hardening on managed k8s nodes
         if: github.event_name != 'pull_request'
-        run: bash scripts/enforce-k8s-multipath-hardening.sh --enforce
+        run: bash "$GITHUB_WORKSPACE/scripts/enforce-k8s-multipath-hardening.sh" --enforce
 
   # Phase 5: Drift detection — runs tofu plan and posts summary as PR comment
   # Only runs on scheduled trigger (not on push/PR to avoid noise)
