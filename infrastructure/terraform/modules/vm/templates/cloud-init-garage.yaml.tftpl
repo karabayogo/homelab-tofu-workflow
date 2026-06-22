@@ -136,7 +136,7 @@ write_files:
       fi
 
       LOGIN_BODY=$(mktemp)
-      LOGIN_CODE=$(curl -sS -o "$LOGIN_BODY" -w '%{http_code}' -X POST \
+      LOGIN_CODE=$(curl -sS -o "$LOGIN_BODY" -w '%%{http_code}' -X POST \
         "$${VAULT_ADDR}/v1/auth/approle/login" \
         -H 'Content-Type: application/json' \
         -d "{\"role_id\": \"$APPROLE_ROLE_ID\", \"secret_id\": \"$APPROLE_SECRET_ID\"}" || true)
@@ -156,7 +156,7 @@ write_files:
       fi
 
       SECRET_BODY=$(mktemp)
-      SECRET_CODE=$(curl -sS -o "$SECRET_BODY" -w '%{http_code}' \
+      SECRET_CODE=$(curl -sS -o "$SECRET_BODY" -w '%%{http_code}' \
         -H "X-Vault-Token: $VAULT_TOKEN" \
         "$${VAULT_ADDR}/v1/$SECRET_PATH" || true)
 
