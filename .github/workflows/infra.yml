@@ -110,6 +110,17 @@ jobs:
           echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
           chmod 600 "$HOME/.ssh/pve-kai"
 
+      - name: Write terraform.tfvars from secrets
+        run: |
+          cat > infrastructure/terraform/terraform.tfvars <<'TFVARS'
+          vault_addr = "${{ secrets.VAULT_ADDR }}"
+          vault_approle_role_id = "${{ secrets.VAULT_APPROLE_ROLE_ID }}"
+          vault_approle_secret_id = "${{ secrets.VAULT_APPROLE_SECRET_ID }}"
+          vault_migration_approle_role_id = "${{ secrets.VAULT_MIGRATION_APPROLE_ROLE_ID }}"
+          vault_migration_approle_secret_id = "${{ secrets.VAULT_MIGRATION_APPROLE_SECRET_ID }}"
+          TFVARS
+          chmod 600 infrastructure/terraform/terraform.tfvars
+
       - name: Verify Garage VM bootstrap convergence on PRs
         if: github.event_name == 'pull_request'
         run: |
