@@ -82,6 +82,48 @@ jobs:
           test -f "$SCRIPT_PATH"
           bash "$SCRIPT_PATH" --enforce
 
+  garage-vm-bootstrap-reconcile:
+    needs: tofu
+    if: needs.tofu.result == 'success'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            infrastructure
+            scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Install PyYAML
+        run: |
+          if ! python3 -m pip --version >/dev/null 2>&1; then
+            curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
+            python3 /tmp/get-pip.py --user --break-system-packages
+          fi
+          PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install --user pyyaml
+
+      - name: Write PVE SSH key
+        run: |
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
+          chmod 600 "$HOME/.ssh/pve-kai"
+
+      - name: Verify Garage VM bootstrap convergence on PRs
+        if: github.event_name == 'pull_request'
+        run: |
+          SCRIPT_PATH="scripts/enforce-garage-vm-bootstrap.sh"
+          test -f "$SCRIPT_PATH"
+          bash "$SCRIPT_PATH" --check
+
+      - name: Enforce Garage VM bootstrap convergence on managed Garage nodes
+        if: github.event_name != 'pull_request'
+        run: |
+          SCRIPT_PATH="scripts/enforce-garage-vm-bootstrap.sh"
+          test -f "$SCRIPT_PATH"
+          bash "$SCRIPT_PATH" --enforce
+
   # Phase 5: Drift detection — runs tofu plan and posts summary as PR comment
   # Only runs on scheduled trigger (not on push/PR to avoid noise)
   drift-check:
