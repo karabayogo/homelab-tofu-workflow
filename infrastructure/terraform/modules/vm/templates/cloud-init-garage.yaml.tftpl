@@ -107,35 +107,77 @@ write_files:
       SECRET_PATH="secret/data/garage/cluster"
       ENV_FILE="/etc/default/garage-secrets"
 
+      validate_hex64() {
+        local value="$1"
+        [[ "$value" =~ ^[0-9a-f]{64}$ ]]
+      }
+
+      validate_env_file() {
+        [ -s "$ENV_FILE" ] || return 1
+        local rpc_secret admin_token
+        rpc_secret=$(awk -F= '/^GARAGE_RPC_SECRET=/{print $2}' "$ENV_FILE" | tail -n1)
+        admin_token=$(awk -F= '/^GARAGE_ADMIN_TOKEN=/{print $2}' "$ENV_FILE" | tail -n1)
+        validate_hex64 "$rpc_secret" && validate_hex64 "$admin_token"
+      }
+
+      use_cached_or_fail() {
+        local reason="$1"
+        if validate_env_file; then
+          echo "WARN: $reason -- using cached $ENV_FILE"
+          return 0
+        fi
+        echo "ERROR: $reason -- no valid cached $ENV_FILE available"
+        return 1
+      }
+
       if [ -z "$APPROLE_ROLE_ID" ] || [ -z "$APPROLE_SECRET_ID" ]; then
-        echo "ERROR: Vault AppRole credentials are empty"
-        exit 1
+        use_cached_or_fail "Vault AppRole credentials are empty"
+        exit $?
       fi
 
-      VAULT_TOKEN=$(curl -fsSL -X POST \
+      LOGIN_BODY=$(mktemp)
+      LOGIN_CODE=$(curl -sS -o "$LOGIN_BODY" -w '%{http_code}' -X POST \
         "$${VAULT_ADDR}/v1/auth/approle/login" \
-        -d "{\"role_id\": \"$APPROLE_ROLE_ID\", \"secret_id\": \"$APPROLE_SECRET_ID\"}" \
-        | jq -r '.auth.client_token')
+        -H 'Content-Type: application/json' \
+        -d "{\"role_id\": \"$APPROLE_ROLE_ID\", \"secret_id\": \"$APPROLE_SECRET_ID\"}" || true)
 
-      if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
-        echo "ERROR: Failed to obtain Vault token via AppRole"
-        exit 1
+      if [ "$LOGIN_CODE" != "200" ]; then
+        cat "$LOGIN_BODY" >&2 || true
+        rm -f "$LOGIN_BODY"
+        use_cached_or_fail "Vault AppRole login failed (HTTP $LOGIN_CODE)"
+        exit $?
       fi
 
-      SECRETS_JSON=$(curl -fsSL \
+      VAULT_TOKEN=$(jq -r '.auth.client_token // empty' "$LOGIN_BODY")
+      rm -f "$LOGIN_BODY"
+      if [ -z "$VAULT_TOKEN" ]; then
+        use_cached_or_fail "Vault AppRole login returned empty client token"
+        exit $?
+      fi
+
+      SECRET_BODY=$(mktemp)
+      SECRET_CODE=$(curl -sS -o "$SECRET_BODY" -w '%{http_code}' \
         -H "X-Vault-Token: $VAULT_TOKEN" \
-        "$${VAULT_ADDR}/v1/$SECRET_PATH")
+        "$${VAULT_ADDR}/v1/$SECRET_PATH" || true)
 
-      RPC_SECRET=$(echo "$SECRETS_JSON" | jq -r '.data.data["rpc-secret"]')
-      ADMIN_TOKEN=$(echo "$SECRETS_JSON" | jq -r '.data.data["admin-token"]')
-
-      if [ -z "$RPC_SECRET" ] || [ "$RPC_SECRET" = "null" ]; then
-        echo "ERROR: Missing rpc-secret in Vault response"
-        exit 1
+      if [ "$SECRET_CODE" != "200" ]; then
+        cat "$SECRET_BODY" >&2 || true
+        rm -f "$SECRET_BODY"
+        use_cached_or_fail "Vault secret fetch failed (HTTP $SECRET_CODE)"
+        exit $?
       fi
-      if [ -z "$ADMIN_TOKEN" ] || [ "$ADMIN_TOKEN" = "null" ]; then
-        echo "ERROR: Missing admin-token in Vault response"
-        exit 1
+
+      RPC_SECRET=$(jq -r '.data.data["rpc-secret"] // empty' "$SECRET_BODY")
+      ADMIN_TOKEN=$(jq -r '.data.data["admin-token"] // empty' "$SECRET_BODY")
+      rm -f "$SECRET_BODY"
+
+      if ! validate_hex64 "$RPC_SECRET"; then
+        use_cached_or_fail "Missing or invalid rpc-secret in Vault response"
+        exit $?
+      fi
+      if ! validate_hex64 "$ADMIN_TOKEN"; then
+        use_cached_or_fail "Missing or invalid admin-token in Vault response"
+        exit $?
       fi
 
       TMP_ENV="$(mktemp)"
@@ -147,6 +189,7 @@ write_files:
 
       install -m 0600 "$TMP_ENV" "$ENV_FILE"
       rm -f "$TMP_ENV"
+      echo "Garage secrets refreshed from Vault"
 
   - path: /etc/garage.toml
     permissions: "0600"
