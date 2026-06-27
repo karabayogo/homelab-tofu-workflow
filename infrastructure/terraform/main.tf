@@ -78,7 +78,7 @@ module "k8s_master2" {
   memory_mb         = 3072
   cpu_cores         = 4
   cpu_units         = 4096
-  os_disk_size_gb   = 32
+  os_disk_size_gb   = 80
   data_disk_size_gb = 0
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
@@ -125,7 +125,7 @@ module "k8s_master1" {
   memory_mb         = 3072
   cpu_cores         = 4
   cpu_units         = 4096
-  os_disk_size_gb   = 32
+  os_disk_size_gb   = 80
   data_disk_size_gb = 0
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
@@ -172,7 +172,7 @@ module "k8s_master3" {
   memory_mb         = 3072
   cpu_cores         = 4
   cpu_units         = 4096
-  os_disk_size_gb   = 32
+  os_disk_size_gb   = 80
   data_disk_size_gb = 0
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
@@ -219,7 +219,7 @@ module "k8s_worker1" {
   memory_mb         = 4096
   cpu_cores         = 4
   cpu_units         = 1024
-  os_disk_size_gb   = 32
+  os_disk_size_gb   = 80
   data_disk_size_gb = 150
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
@@ -265,7 +265,7 @@ module "k8s_worker2" {
   memory_mb         = 4096
   cpu_cores         = 4
   cpu_units         = 1024
-  os_disk_size_gb   = 32
+  os_disk_size_gb   = 80
   data_disk_size_gb = 100
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
