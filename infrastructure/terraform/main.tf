@@ -262,7 +262,7 @@ module "k8s_worker2" {
 
   vm_id             = 800
   vm_name           = "k8s-worker2"
-  memory_mb         = 4096
+  memory_mb         = 8192
   cpu_cores         = 4
   cpu_units         = 1024
   os_disk_size_gb   = 80
