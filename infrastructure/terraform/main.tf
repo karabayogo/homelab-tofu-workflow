@@ -443,11 +443,11 @@ module "garage_n1" {
   admin_token = "PLACEHOLDER_ADMIN_TOKEN"
 
   # Vault AppRole — used by cloud-init to authenticate and fetch real secrets from Vault
-  # Generate with:
-  #   vault write auth/approle/role/garage-node secret_id_ttl=8760h token_tll=1h
-  #   vault read auth/approle/role/garage-node/role-id
-  #   vault write -f auth/approle/role/garage-node/secret-id
-  # AppRole policy must grant: read on secret/data/garage/cluster
+  # AppRole + cluster secret are GitOps-managed by the vault-approle-bootstrap ArgoCD app
+  # (k8s-workbench: argocd/vault-approle-bootstrap/). A PostSync Job idempotently restores
+  # the AppRole with the exact baked role-id + custom secret-id from a SOPS-encrypted seed.
+  # A CronJob watchdog (garage-approle-watchdog) self-heals on drift hourly.
+  # Do NOT create the AppRole manually — the GitOps bootstrap handles it.
   vault_addr              = var.vault_addr
   vault_approle_role_id   = var.vault_approle_role_id   # Set in terraform.tfvars
   vault_approle_secret_id = var.vault_approle_secret_id # Set in terraform.tfvars
