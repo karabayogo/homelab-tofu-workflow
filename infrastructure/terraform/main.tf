@@ -216,7 +216,13 @@ module "k8s_worker1" {
 
   vm_id             = 700
   vm_name           = "k8s-worker1"
-  memory_mb         = 4096
+  # Bumped from 4096 to 8192 on 2026-07-08.
+  # Same OOM cascade as worker2 (June 29 RCA): 4GB is insufficient for
+  # worker nodes running observability workloads (prometheus, grafana,
+  # loki, alloy, longhorn CSI). OOM kills → kernel soft lockups →
+  # containerd/PLEG death → node NotReady → stuck Terminating pods →
+  # Longhorn PVC I/O errors → CrashLoopBackOff across multiple apps.
+  memory_mb         = 8192
   cpu_cores         = 4
   cpu_units         = 1024
   os_disk_size_gb   = 80
