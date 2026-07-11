@@ -75,7 +75,7 @@ module "k8s_master2" {
 
   vm_id             = 500
   vm_name           = "k8s-master2"
-  memory_mb         = 3072
+  memory_mb         = 8192
   cpu_cores         = 4
   cpu_units         = 4096
   os_disk_size_gb   = 80
@@ -122,7 +122,7 @@ module "k8s_master1" {
 
   vm_id             = 400
   vm_name           = "k8s-master1"
-  memory_mb         = 3072
+  memory_mb         = 8192
   cpu_cores         = 4
   cpu_units         = 4096
   os_disk_size_gb   = 80
@@ -169,7 +169,7 @@ module "k8s_master3" {
 
   vm_id             = 600
   vm_name           = "k8s-master3"
-  memory_mb         = 3072
+  memory_mb         = 8192
   cpu_cores         = 4
   cpu_units         = 4096
   os_disk_size_gb   = 80
