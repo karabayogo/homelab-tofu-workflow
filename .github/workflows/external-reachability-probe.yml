@@ -1,0 +1,132 @@
+name: External Reachability Probe
+
+# Strategic fix for the 2026-07-12 outage.
+# The user couldn't SSH to VM 201 from macOS because their Mac's
+# Tailscale/network/Known-hosts state broke independently of the
+# homelab cluster. No homelab-internal watchdog could detect
+# macOS-side failures.
+#
+# This workflow runs on GitHub-hosted Actions (ubunut-latest by
+# default — totally outside the homelab network). Every 5 minutes
+# it makes fresh TCP+HTTP connections to PVE/VMs from a clean
+# GitHub network state — simulating what the operator's Mac does,
+# but from a known and reproducible vantage point.
+#
+# When the workflow fails:
+#   - Creates a GitHub Issue with full diagnostic context
+#   - Posts to Discord via repo webhook (via discord-webhook-drift
+#     cron)
+#
+# Probes:
+#   1. PVE Web API on 192.168.1.50:8006 (must be reachable; cluster
+#      is on Tailscale so this WILL fail when Tailscale is up but
+#      will succeed when failure happens. We probe via Tailscale
+#      hostname pve.lan.crabdance.com instead.)
+#   2. VM SSH on multiple IPs/hostnames
+#   3. Tailscale tunnel resolve (DNS lookup)
+#
+# Trigger: every 5min via schedule cron. Idempotent. Stateless.
+
+on:
+  schedule:
+    # Every 5 minutes
+    - cron: "*/5 * * * *"
+  workflow_dispatch: # manual run for testing
+
+permissions:
+  issues: write   # to create issues on failure
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Probe PVE via Tailscale MagicDNS
+        id: pve-magicdns
+        run: |
+          set +e
+          echo "=== Probing pve.lan.crabdance.com:8006 (Tailscale DNS resolution) ==="
+          if nc -zv -w 5 pve.lan.crabdance.com 8006 2>&1; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "PVE_API_UNREACHABLE: nc to pve.lan.crabdance.com:8006 failed"
+          fi
+
+      - name: Probe VM201 SSH via Tailscale MagicDNS
+        id: vm201-ssh
+        run: |
+          set +e
+          echo "=== Probing vm201.lan.crabdance.com:22 (Tailscale DNS resolution) ==="
+          if nc -zv -w 5 vm201.lan.crabdance.com 22 2>&1; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "VM201_SSH_UNREACHABLE: nc to vm201.lan.crabdance.com:22 failed"
+          fi
+
+      - name: Probe critical cluster VMs via PVE host IP (LAN fallback)
+        id: lan-fallback
+        run: |
+          set +e
+          echo "=== Probing direct IPs (LAN-side) ==="
+          for endpoint in "192.168.1.50:8006" "192.168.1.216:22" "192.168.1.201:22"; do
+            host="${endpoint%:*}"
+            port="${endpoint#*:}"
+            if nc -zv -w 3 "$host" "$port" 2>&1; then
+              echo "  OK $endpoint"
+            else
+              echo "  FAIL $endpoint"
+            fi
+          done
+
+      - name: Tailscale MagicDNS resolution check
+        id: dns
+        run: |
+          set +e
+          echo "=== DNS resolution check ==="
+          for host in pve.lan.crabdance.com vm201.lan.crabdance.com; do
+            if getent hosts "$host" >/dev/null 2>&1; then
+              ip=$(getent hosts "$host" | awk '{print $1}')
+              echo "  OK $host -> $ip"
+            else
+              echo "  FAIL $host (no DNS resolution)"
+            fi
+          done
+
+      - name: Issue creation on probe failure
+        if: steps.pve-magicdns.outputs.ok != 'true' || steps.vm201-ssh.outputs.ok != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `🚨 External reachability probe failed [${new Date().toISOString()}]`;
+            const body = [
+              '## External reachability probe failed',
+              '',
+              '**Triggered by**: GitHub Actions cron `*/5 * * * *`',
+              '',
+              '### Probes',
+              '- pve.lan.crabdance.com:8006: `${{ steps.pve-magicdns.outputs.ok }}`',
+              '- vm201.lan.crabdance.com:22: `${{ steps.vm201-ssh.outputs.ok }}`',
+              '',
+              '### Recovery',
+              'Run `k8s-workbench/scripts/hermes-cron/vm-ssh-reachability-probe.sh` to get cluster-internal state.',
+              '',
+              '### RCA hint',
+              'This probe runs OUTSIDE the homelab. Failures indicate:',
+              '1. Tailscale tunnel down (most likely)',
+              '2. PVE host network failure',
+              '3. MagicDNS resolution failure',
+              '4. ISP-level connectivity loss',
+              '',
+              '**Do NOT reboot**. Check PVE web UI first: https://pve.lan.crabdance.com:8006',
+              '',
+              '_Auto-created by external-reachability-probe.yml_',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['homelab-incident', 'reachability'],
+            });
