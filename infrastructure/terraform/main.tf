@@ -411,7 +411,7 @@ module "garage_n1" {
 
   vm_id             = 901
   vm_name           = "garage-n1"
-  memory_mb         = 2048
+  memory_mb         = 4096
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
@@ -467,7 +467,7 @@ module "garage_n2" {
 
   vm_id             = 902
   vm_name           = "garage-n2"
-  memory_mb         = 2048
+  memory_mb         = 4096
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
@@ -511,7 +511,7 @@ module "garage_n3" {
 
   vm_id             = 903
   vm_name           = "garage-n3"
-  memory_mb         = 2048
+  memory_mb         = 4096
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
