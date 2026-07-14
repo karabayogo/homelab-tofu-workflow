@@ -154,6 +154,8 @@ jobs:
           tofu_version: "1.11.6"
 
       - name: Run tofu plan
+        # -refresh=false avoids bpg/proxmox provider "Plugin did not respond"
+        # hangs during ReadResource for rebuilt VMs.
         id: plan
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.GARAGE_ACCESS_KEY }}
@@ -167,7 +169,7 @@ jobs:
         run: |
           cd infrastructure/terraform
           tofu init -backend=false 2>&1 | tail -5
-          tofu plan -detailed-exitcode -lock=false 2>&1 | tee /tmp/plan_output.txt
+          tofu plan -refresh=false -detailed-exitcode -lock=false 2>&1 | tee /tmp/plan_output.txt
           echo "PLAN_EXIT=$?" >> $GITHUB_OUTPUT
 
       - name: Post drift summary

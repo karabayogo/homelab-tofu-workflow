@@ -103,12 +103,14 @@ jobs:
           ~/.local/bin/tofu init -upgrade
 
       - name: Terraform plan
+        # -refresh=false avoids bpg/proxmox provider "Plugin did not respond"
+        # hangs during ReadResource for rebuilt VMs.
         run: |
           cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
           if [ -n "${K3S_TOKEN:-}" ]; then
-            ~/.local/bin/tofu plan -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}" -var="k3s_token=${K3S_TOKEN}"
+            ~/.local/bin/tofu plan -refresh=false -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}" -var="k3s_token=${K3S_TOKEN}"
           else
-            ~/.local/bin/tofu plan -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}"
+            ~/.local/bin/tofu plan -refresh=false -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}"
           fi
         env:
           K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
@@ -179,12 +181,15 @@ jobs:
           ~/.local/bin/tofu init -upgrade
 
       - name: Terraform apply
+        # -refresh=false avoids bpg/proxmox provider "Plugin did not respond"
+        # hangs during ReadResource for rebuilt VMs (see RCA 2026-07-14 VM 600 rebuild).
+        # State in Garage S3 is authoritative; we only need to apply pending changes.
         run: |
           cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
           if [ -n "${K3S_TOKEN:-}" ]; then
-            ~/.local/bin/tofu apply -auto-approve -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}" -var="k3s_token=${K3S_TOKEN}"
+            ~/.local/bin/tofu apply -auto-approve -refresh=false -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}" -var="k3s_token=${K3S_TOKEN}"
           else
-            ~/.local/bin/tofu apply -auto-approve -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}"
+            ~/.local/bin/tofu apply -auto-approve -refresh=false -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}"
           fi
         env:
           K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
