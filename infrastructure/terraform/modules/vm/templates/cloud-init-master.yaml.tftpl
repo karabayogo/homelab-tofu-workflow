@@ -40,7 +40,7 @@ runcmd:
   - sysctl --system
 
   # Install k3s server (control plane) with node labels
-  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" K3S_TOKEN="***" sh -s - server --server "https://${k3s_join_server}:6443" --node-ip "${static_ip}"${node_labels_args}
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" K3S_TOKEN="${k3s_token}" sh -s - server --server "https://${k3s_join_server}:6443" --node-ip "${static_ip}"${node_labels_args}
 
   # QEMU guest agent — required for qm agent and qm guest exec
   - systemctl enable qemu-guest-agent
