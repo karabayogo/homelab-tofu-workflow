@@ -104,12 +104,18 @@ module "k8s_master2" {
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
 
-  # Longhorn node labels - declarative at IaC layer
+  # Longhorn node labels — declarative at IaC layer
+  # STRATEGIC: Control-plane nodes are PERMANENTLY evicted from Longhorn replica placement.
+  # The iSCSI medium error RCA (2026-07-14) proved that Longhorn iSCSI block devices on
+  # control-plane nodes cause chronic kernel-level medium errors. By evicting all masters,
+  # Longhorn will never place replicas here, eliminating iSCSI traffic on master nodes.
+  # Longhorn volumes for control-plane workloads (Vault, Prometheus) will use replicas on
+  # worker nodes only, with the master node acting as a pure iSCSI client (read-only attach).
   node_labels = {
-    "node.longhorn.io/create-default-disk" = "true"
+    "node.longhorn.io/evicted"             = "true"
+    "node.longhorn.io/create-default-disk" = "false"
   }
   # No additional post-create Longhorn labels on control-plane nodes.
-  # Capacity-tier labels are only declared for worker nodes with data disks.
   post_create_node_labels = {}
 
   protect_vm = true
@@ -151,12 +157,18 @@ module "k8s_master1" {
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
 
-  # Longhorn node labels - declarative at IaC layer
+  # Longhorn node labels — declarative at IaC layer
+  # STRATEGIC: Control-plane nodes are PERMANENTLY evicted from Longhorn replica placement.
+  # The iSCSI medium error RCA (2026-07-14) proved that Longhorn iSCSI block devices on
+  # control-plane nodes cause chronic kernel-level medium errors. By evicting all masters,
+  # Longhorn will never place replicas here, eliminating iSCSI traffic on master nodes.
+  # Longhorn volumes for control-plane workloads (Vault, Prometheus) will use replicas on
+  # worker nodes only, with the master node acting as a pure iSCSI client (read-only attach).
   node_labels = {
-    "node.longhorn.io/create-default-disk" = "true"
+    "node.longhorn.io/evicted"             = "true"
+    "node.longhorn.io/create-default-disk" = "false"
   }
   # No additional post-create Longhorn labels on control-plane nodes.
-  # Capacity-tier labels are only declared for worker nodes with data disks.
   post_create_node_labels = {}
 
   protect_vm = true
@@ -198,12 +210,18 @@ module "k8s_master3" {
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
 
-  # Longhorn node labels - declarative at IaC layer
+  # Longhorn node labels — declarative at IaC layer
+  # STRATEGIC: Control-plane nodes are PERMANENTLY evicted from Longhorn replica placement.
+  # The iSCSI medium error RCA (2026-07-14) proved that Longhorn iSCSI block devices on
+  # control-plane nodes cause chronic kernel-level medium errors. By evicting all masters,
+  # Longhorn will never place replicas here, eliminating iSCSI traffic on master nodes.
+  # Longhorn volumes for control-plane workloads (Vault, Prometheus) will use replicas on
+  # worker nodes only, with the master node acting as a pure iSCSI client (read-only attach).
   node_labels = {
-    "node.longhorn.io/create-default-disk" = "true"
+    "node.longhorn.io/evicted"             = "true"
+    "node.longhorn.io/create-default-disk" = "false"
   }
   # No additional post-create Longhorn labels on control-plane nodes.
-  # Capacity-tier labels are only declared for worker nodes with data disks.
   post_create_node_labels = {}
 
   protect_vm = true
