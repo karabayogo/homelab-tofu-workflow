@@ -175,7 +175,7 @@ variable "k3s_version" {
 variable "k3s_token" {
   description = "k3s cluster join token (from /var/lib/rancher/k3s/server/token on master)"
   type        = string
-  sensitive   = true
+  # NOT marked sensitive — templatefile() must render the actual value into cloud-init
   default     = ""
 }
 
@@ -253,14 +253,14 @@ variable "garage_version" {
 variable "rpc_secret" {
   description = "Garage RPC secret for inter-node communication (must match across all Garage nodes)"
   type        = string
-  sensitive   = true
+  # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
   default     = ""  # Must be set explicitly for garage template
 }
 
 variable "admin_token" {
   description = "Garage admin API token (generate with: openssl rand -hex 32)"
   type        = string
-  sensitive   = true
+  # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
   default     = ""  # Must be set explicitly for garage template
 }
 
@@ -275,13 +275,13 @@ variable "vault_addr" {
 variable "vault_approle_role_id" {
   description = "Vault AppRole Role ID for Garage secret fetch (read-only access to secret/data/garage/cluster)"
   type        = string
-  sensitive   = true
+  # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
   default     = ""
 }
 
 variable "vault_approle_secret_id" {
   description = "Vault AppRole Secret ID for Garage secret fetch"
   type        = string
-  sensitive   = true
+  # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
   default     = ""
 }

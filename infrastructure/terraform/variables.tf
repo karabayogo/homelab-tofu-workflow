@@ -57,9 +57,9 @@ variable "garage_secret_key" {
 # ── k3s cattle config ──
 
 variable "k3s_token" {
-  description = "k3s cluster join token (sensitive — pass via TF_VAR or CI secret)"
+  description = "k3s cluster join token (pass via TF_VAR or CI secret)"
   type        = string
-  sensitive   = true
+  # NOT marked sensitive — must render into cloud-init templatefile() literally
   default     = ""
 }
 
@@ -75,7 +75,7 @@ variable "vault_addr" {
 variable "vault_approle_role_id" {
   description = "Vault AppRole Role ID used by Garage nodes to fetch secret/data/garage/cluster"
   type        = string
-  sensitive   = true
+  # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
   nullable    = false
   default     = ""
 }
@@ -83,7 +83,7 @@ variable "vault_approle_role_id" {
 variable "vault_approle_secret_id" {
   description = "Vault AppRole Secret ID used by Garage nodes to fetch secret/data/garage/cluster"
   type        = string
-  sensitive   = true
+  # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
   nullable    = false
   default     = ""
 }
@@ -93,7 +93,7 @@ variable "vault_approle_secret_id" {
 variable "vault_migration_approle_role_id" {
   description = "Vault AppRole Role ID used by migration helper to read secret/data/garage-s3 and secret/data/garage-s3-new"
   type        = string
-  sensitive   = true
+  # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
   nullable    = false
   default     = ""
 }
@@ -101,7 +101,7 @@ variable "vault_migration_approle_role_id" {
 variable "vault_migration_approle_secret_id" {
   description = "Vault AppRole Secret ID used by migration helper to read secret/data/garage-s3 and secret/data/garage-s3-new"
   type        = string
-  sensitive   = true
+  # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
   nullable    = false
   default     = ""
 }
