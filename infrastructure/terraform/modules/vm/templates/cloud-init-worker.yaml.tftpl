@@ -103,6 +103,16 @@ runcmd:
   - echo 'blacklist dm_multipath' > /etc/modprobe.d/99-longhorn-no-multipath.conf || true
   # === END Longhorn multipath hardening ===
 
+  # === START Kernel soft-lockup mitigation ===
+  # RCA 2026-07-14: kernel soft-lockup hangs leave nodes unreachable.
+  # Persisting to /etc/default/grub.d/ ensures the setting survives rebuilds.
+  - |
+    cat > /etc/default/grub.d/99-softlockup-panic.cfg <<'EOF'
+    GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT softlockup_panic=1"
+    EOF
+  - update-grub 2>/dev/null || grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
+  # === END Kernel soft-lockup mitigation ===
+
   # Kernel params
   - sysctl --system
   %{ if data_disk_size_gb > 0 ~}

@@ -36,6 +36,18 @@ runcmd:
   - echo 'blacklist dm_multipath' > /etc/modprobe.d/99-longhorn-no-multipath.conf || true
   # === END Longhorn multipath hardening ===
 
+  # === START Kernel soft-lockup mitigation ===
+  # RCA 2026-07-14: k3s API server unreachability from kernel soft-lockup hangs.
+  # Without softlockup_panic=1, a hung CPU leaves etcd voter (this master)
+  # unreachable → cluster-wide API blip → liveness probe cascade → restart storm.
+  # Persisting to /etc/default/grub.d/ ensures the setting survives rebuilds.
+  - |
+    cat > /etc/default/grub.d/99-softlockup-panic.cfg <<'EOF'
+    GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT softlockup_panic=1"
+    EOF
+  - update-grub 2>/dev/null || grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
+  # === END Kernel soft-lockup mitigation ===
+
   # Kernel params
   - sysctl --system
 
