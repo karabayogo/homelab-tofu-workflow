@@ -3,7 +3,7 @@
 #
 # Endpoint and credentials are injected at `tofu init` time via
 # `-backend-config`, not hardcoded in Git:
-#   endpoint   = http://192.168.1.241:3900   (current Garage)
+#   endpoint   = http://192.168.1.246:9000   (current tofu-state1 MinIO)
 #   access_key = ...
 #   secret_key = ...
 #

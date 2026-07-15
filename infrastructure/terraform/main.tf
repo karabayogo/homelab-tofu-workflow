@@ -76,7 +76,11 @@ module "k8s_master2" {
 
   vm_id             = 500
   vm_name           = "k8s-master2"
-  memory_mb         = 8192
+  # Right-sized after the 2026-07-15 host-memory RCA.
+  # Observed steady-state guest usage was ~2.1 GiB with >5 GiB available,
+  # so 4 GiB preserves control-plane headroom without forcing the PVE host
+  # into chronic swap pressure.
+  memory_mb         = 4096
   cpu_cores         = 4
   cpu_units         = 4096
   os_disk_size_gb   = 80
@@ -129,7 +133,11 @@ module "k8s_master1" {
 
   vm_id             = 400
   vm_name           = "k8s-master1"
-  memory_mb         = 8192
+  # Right-sized after the 2026-07-15 host-memory RCA.
+  # Observed steady-state guest usage was ~2.7 GiB with ~5 GiB available,
+  # so 4 GiB preserves control-plane headroom without forcing the PVE host
+  # into chronic swap pressure.
+  memory_mb         = 4096
   cpu_cores         = 4
   cpu_units         = 4096
   os_disk_size_gb   = 80
@@ -182,7 +190,11 @@ module "k8s_master3" {
 
   vm_id             = 600
   vm_name           = "k8s-master3"
-  memory_mb         = 8192
+  # Right-sized after the 2026-07-15 host-memory RCA.
+  # Observed steady-state guest usage was ~2.0 GiB with ~5.7 GiB available,
+  # so 4 GiB preserves control-plane headroom without forcing the PVE host
+  # into chronic swap pressure.
+  memory_mb         = 4096
   cpu_cores         = 4
   cpu_units         = 4096
   os_disk_size_gb   = 80
@@ -235,13 +247,12 @@ module "k8s_worker1" {
 
   vm_id   = 700
   vm_name = "k8s-worker1"
-  # Bumped from 4096 to 8192 on 2026-07-08.
-  # Same OOM cascade as worker2 (June 29 RCA): 4GB is insufficient for
-  # worker nodes running observability workloads (prometheus, grafana,
-  # loki, alloy, longhorn CSI). OOM kills → kernel soft lockups →
-  # containerd/PLEG death → node NotReady → stuck Terminating pods →
-  # Longhorn PVC I/O errors → CrashLoopBackOff across multiple apps.
-  memory_mb         = 8192
+  # Right-sized after the 2026-07-15 host-memory RCA.
+  # 4 GiB proved too small during the June 29 worker OOM incident, but the
+  # 8 GiB fixed reservation materially contributed to host swap pressure.
+  # Observed steady-state guest usage was ~3.3 GiB with ~4.5 GiB available,
+  # so 6 GiB keeps real workload headroom while reducing PVE overcommit.
+  memory_mb         = 6144
   cpu_cores         = 4
   cpu_units         = 1024
   os_disk_size_gb   = 80
@@ -287,7 +298,11 @@ module "k8s_worker2" {
 
   vm_id             = 800
   vm_name           = "k8s-worker2"
-  memory_mb         = 8192
+  # Right-sized after the 2026-07-15 host-memory RCA.
+  # Observed steady-state guest usage was ~2.2 GiB with ~5.6 GiB available,
+  # so 6 GiB keeps parity with worker1 and avoids another 8 GiB fixed host
+  # reservation on a single-node PVE box.
+  memory_mb         = 6144
   cpu_cores         = 4
   cpu_units         = 1024
   os_disk_size_gb   = 80
@@ -365,8 +380,8 @@ module "openclaw" {
 #   - local restore UX via PBS
 #   - no Synology/NFS mount in the Proxmox management plane
 #   - keep the current VM201/Synology DR copy as the off-host layer
-#
-# This VM stays stopped until host memory headroom is reclaimed safely.
+#   - boot automatically because the host-side RAM reservations were
+#     right-sized after the 2026-07-15 memory-pressure RCA
 module "backup_pbs1" {
   source = "./modules/vm"
 
@@ -386,8 +401,8 @@ module "backup_pbs1" {
   tags              = ["backup", "pbs"]
   os_version        = "13"
   static_ip         = "192.168.1.245"
-  vm_started        = false
-  onboot            = false
+  vm_started        = true
+  onboot            = true
 
   proxmox_host       = "192.168.1.50"
   ssh_key_path       = "/home/moltbot/.ssh/pve-kai"
@@ -407,7 +422,7 @@ module "backup_pbs1" {
 # Strategic intent:
 #   - break the circular dependency between OpenTofu state and the Garage cluster
 #   - keep state on a small, dedicated management-plane VM instead of a workload S3 tier
-#   - provide a clean migration landing zone before the backend endpoint secret is rotated
+#   - keep backend state available even when the Garage workload cluster is degraded
 module "tofu_state1" {
   source = "./modules/vm"
 

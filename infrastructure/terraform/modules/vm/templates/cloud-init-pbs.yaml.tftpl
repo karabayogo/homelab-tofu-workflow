@@ -21,13 +21,18 @@ users:
     ssh_authorized_keys:
       - ${ssh_pub_key}
   - name: ${admin_user}
-    sudo: ALL=(ALL) NOPASSWD:ALL
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
     shell: /bin/bash
     lock_passwd: false
     ssh_authorized_keys:
       - ${ssh_pub_key}
 
 write_files:
+  - path: /etc/apt/apt.conf.d/99force-ipv4
+    permissions: "0644"
+    content: |
+      Acquire::ForceIPv4 "true";
+
   - path: /opt/pbs-data-disk-setup.sh
     permissions: "0755"
     content: |
@@ -35,7 +40,7 @@ write_files:
       set -euo pipefail
 
       DISK="/dev/sdb"
-      MOUNT_POINT="/var/lib/proxmox-backup"
+      MOUNT_POINT="/srv/proxmox-backup-primary"
 
       for i in $(seq 1 30); do
         if [ -b "$DISK" ]; then
@@ -58,7 +63,7 @@ write_files:
         mount "$DISK" "$MOUNT_POINT"
       fi
 
-      if ! awk '$2 == "/var/lib/proxmox-backup" { found=1 } END { exit found ? 0 : 1 }' /etc/fstab; then
+      if ! awk '$2 == "/srv/proxmox-backup-primary" { found=1 } END { exit found ? 0 : 1 }' /etc/fstab; then
         echo "$DISK $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
       fi
 
@@ -70,6 +75,17 @@ write_files:
       #!/bin/bash
       set -euo pipefail
 
+      apt_retry() {
+        local attempt
+        for attempt in 1 2 3 4 5; do
+          if "$@"; then
+            return 0
+          fi
+          sleep $((attempt * 5))
+        done
+        return 1
+      }
+
       install -d -m 0755 /etc/apt/keyrings
       curl -fsSL https://enterprise.proxmox.com/debian/proxmox-release-trixie.gpg -o /etc/apt/keyrings/proxmox-release-trixie.gpg
       chmod 0644 /etc/apt/keyrings/proxmox-release-trixie.gpg
@@ -79,8 +95,8 @@ write_files:
       EOF
 
       export DEBIAN_FRONTEND=noninteractive
-      apt-get update -qq
-      apt-get install -y proxmox-backup-server
+      apt_retry apt-get update -qq -o Acquire::ForceIPv4=true
+      apt_retry apt-get install -y -o Acquire::ForceIPv4=true --fix-missing proxmox-backup-server
 
   - path: /opt/pbs-bootstrap.sh
     permissions: "0755"
@@ -89,7 +105,12 @@ write_files:
       set -euo pipefail
 
       DATASTORE_NAME="primary"
-      DATASTORE_PATH="/var/lib/proxmox-backup/datastore"
+      DATASTORE_PATH="/srv/proxmox-backup-primary/datastore"
+
+      if ! command -v proxmox-backup-manager >/dev/null 2>&1; then
+        echo "ERROR: proxmox-backup-manager is not installed"
+        exit 1
+      fi
 
       if ! proxmox-backup-manager datastore list | awk 'NR>1 {print $1}' | grep -qx "$DATASTORE_NAME"; then
         proxmox-backup-manager datastore create "$DATASTORE_NAME" "$DATASTORE_PATH"

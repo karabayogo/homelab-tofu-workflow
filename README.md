@@ -6,7 +6,7 @@ Reusable GitHub Actions workflow + OpenTofu infrastructure code for homelab k8s 
 
 ### Reusable CI/CD workflow
 
-`.github/workflows/tofu.yml` — reusable workflow for OpenTofu plan/apply with Garage S3 remote state and SigV4 authentication. Other repos call it via `workflow_call`.
+`.github/workflows/tofu.yml` — reusable workflow for OpenTofu plan/apply with a dedicated S3-compatible control-plane state backend. Other repos call it via `workflow_call`.
 
 ### k8s cattle templates
 
@@ -14,7 +14,7 @@ Reusable GitHub Actions workflow + OpenTofu infrastructure code for homelab k8s 
 - 3x control plane (VM 400, 500, 600)
 - 2x workers (VM 700, 800)
 - `modules/vm/` — reusable VM module with cloud-image provisioner, cloud-init templates, and post-create hooks
-- Garage S3 backend for state (`terraform-state` bucket)
+- dedicated control-plane state backend (`terraform-state` bucket on `tofu-state1`)
 
 ### Self-calling CI
 
@@ -44,6 +44,9 @@ jobs:
     secrets:
       PROXMOX_API_TOKEN: ${{ secrets.PROXMOX_API_TOKEN }}
       PVE_SSH_PRIVATE_KEY: ${{ secrets.PVE_SSH_PRIVATE_KEY }}
+      TOFU_BACKEND_ACCESS_KEY: ${{ secrets.TOFU_BACKEND_ACCESS_KEY }}
+      TOFU_BACKEND_SECRET_KEY: ${{ secrets.TOFU_BACKEND_SECRET_KEY }}
+      TOFU_BACKEND_ENDPOINT: ${{ secrets.TOFU_BACKEND_ENDPOINT }}
       GARAGE_ACCESS_KEY: ${{ secrets.GARAGE_ACCESS_KEY }}
       GARAGE_SECRET_KEY: ${{ secrets.GARAGE_SECRET_KEY }}
       GARAGE_ENDPOINT_URL_OVERRIDE: ${{ secrets.GARAGE_ENDPOINT_URL_OVERRIDE }}
@@ -56,9 +59,12 @@ jobs:
 |--------|-------------|
 | `PROXMOX_API_TOKEN` | Proxmox VE API token |
 | `PVE_SSH_PRIVATE_KEY` | SSH private key for Proxmox host |
-| `GARAGE_ACCESS_KEY` | Garage S3 access key |
-| `GARAGE_SECRET_KEY` | Garage S3 secret key |
-| `GARAGE_ENDPOINT_URL_OVERRIDE` | Garage S3 endpoint URL |
+| `TOFU_BACKEND_ACCESS_KEY` | Dedicated OpenTofu state-backend access key |
+| `TOFU_BACKEND_SECRET_KEY` | Dedicated OpenTofu state-backend secret key |
+| `TOFU_BACKEND_ENDPOINT` | Dedicated OpenTofu state-backend endpoint |
+| `GARAGE_ACCESS_KEY` | Garage workload-cluster S3 access key |
+| `GARAGE_SECRET_KEY` | Garage workload-cluster S3 secret key |
+| `GARAGE_ENDPOINT_URL_OVERRIDE` | Garage workload-cluster S3 endpoint URL |
 | `K3S_TOKEN` | k3s cluster join token (optional, required for k8s cattle templates) |
 
 ## Inputs
@@ -74,7 +80,7 @@ jobs:
 
 - **PRs** trigger a `tofu plan` (read-only, no changes)
 - **Pushes to main** trigger a `tofu apply` (with `environment: production` gate)
-- State is stored in Garage S3 with `us-east-1` SigV4 region workaround
+- State is stored in a dedicated S3-compatible control-plane backend with `us-east-1` SigV4 compatibility
 - VMs are cattle: `prevent_destroy = true`, imported via `tofu import`, cloud-init handles k3s bootstrap
 - Worker nodes get `node-role.kubernetes.io/worker` label applied via post-create kubectl hook
 # smoke test 2026-05-20T22:35:35+10:00
