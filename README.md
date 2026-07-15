@@ -82,6 +82,9 @@ jobs:
 - **Pushes to main** trigger a `tofu apply` (with `environment: production` gate)
 - State is stored in a dedicated S3-compatible control-plane backend with `us-east-1` SigV4 compatibility
 - CI uses a dedicated compatibility credential on `tofu-state1` so backend migrations do not break runners during control-plane cutovers
+- Terraform enforces a PVE host memory budget so CI fails before a single-host overcommit can push Proxmox into swap thrash again
+- Legacy/manual VMs are accounted for explicitly in that budget until they are onboarded into GitOps as cattle
+- PVE host config is backed up to PBS via `scripts/pve-host-config-backup-to-pbs.{sh,service,timer}` instead of mounting Synology/NFS into the management plane
 - VMs are cattle: `prevent_destroy = true`, imported via `tofu import`, cloud-init handles k3s bootstrap
 - Worker nodes get `node-role.kubernetes.io/worker` label applied via post-create kubectl hook
 # smoke test 2026-05-20T22:35:35+10:00

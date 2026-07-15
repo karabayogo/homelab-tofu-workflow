@@ -1,0 +1,11 @@
+[Unit]
+Description=Back up curated PVE host config to PBS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/bin/pve-host-config-backup-to-pbs.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

@@ -69,13 +69,53 @@ resource "null_resource" "garage_bootstrap_guard" {
   }
 }
 
+locals {
+  # Strategic guardrail after the 2026-07-15 PVE hang RCA:
+  # keep an explicit budget for the single-host control plane instead of
+  # letting GitOps silently reserve all RAM and push the hypervisor into swap.
+  #
+  # VM 201 and VM 300 are still legacy/manual today, so they are accounted for
+  # via var.pve_unmanaged_reserved_memory_mb until they are onboarded as cattle.
+  pve_managed_running_vm_memory_mb = (
+    4096 + # k8s-master2
+    4096 + # k8s-master1
+    4096 + # k8s-master3
+    6144 + # k8s-worker1
+    6144 + # k8s-worker2
+    3072 + # openclaw
+    4096 + # backup-pbs1
+    1024 + # tofu-state1
+    (var.start_migration_helper ? 2048 : 0) +
+    (var.start_garage_nodes ? 2048 : 0) +
+    (var.start_garage_nodes ? 2048 : 0) +
+    (var.start_garage_nodes ? 2048 : 0)
+  )
+}
+
+check "pve_host_memory_budget" {
+  assert {
+    condition = (
+      local.pve_managed_running_vm_memory_mb +
+      var.pve_unmanaged_reserved_memory_mb +
+      var.pve_host_reserved_memory_mb
+    ) <= var.pve_host_total_memory_mb
+    error_message = format(
+      "PVE RAM budget exceeded: managed=%d MiB unmanaged=%d MiB host-reserve=%d MiB total=%d MiB. Reduce VM memory, start fewer optional VMs, or onboard/right-size legacy VMs before applying.",
+      local.pve_managed_running_vm_memory_mb,
+      var.pve_unmanaged_reserved_memory_mb,
+      var.pve_host_reserved_memory_mb,
+      var.pve_host_total_memory_mb,
+    )
+  }
+}
+
 # ── K8s Master 2 (VM 500) — Primary server, other masters join here ──
 
 module "k8s_master2" {
   source = "./modules/vm"
 
-  vm_id             = 500
-  vm_name           = "k8s-master2"
+  vm_id   = 500
+  vm_name = "k8s-master2"
   # Right-sized after the 2026-07-15 host-memory RCA.
   # Observed steady-state guest usage was ~2.1 GiB with >5 GiB available,
   # so 4 GiB preserves control-plane headroom without forcing the PVE host
@@ -131,8 +171,8 @@ module "k8s_master2" {
 module "k8s_master1" {
   source = "./modules/vm"
 
-  vm_id             = 400
-  vm_name           = "k8s-master1"
+  vm_id   = 400
+  vm_name = "k8s-master1"
   # Right-sized after the 2026-07-15 host-memory RCA.
   # Observed steady-state guest usage was ~2.7 GiB with ~5 GiB available,
   # so 4 GiB preserves control-plane headroom without forcing the PVE host
@@ -188,8 +228,8 @@ module "k8s_master1" {
 module "k8s_master3" {
   source = "./modules/vm"
 
-  vm_id             = 600
-  vm_name           = "k8s-master3"
+  vm_id   = 600
+  vm_name = "k8s-master3"
   # Right-sized after the 2026-07-15 host-memory RCA.
   # Observed steady-state guest usage was ~2.0 GiB with ~5.7 GiB available,
   # so 4 GiB preserves control-plane headroom without forcing the PVE host
@@ -296,8 +336,8 @@ module "k8s_worker1" {
 module "k8s_worker2" {
   source = "./modules/vm"
 
-  vm_id             = 800
-  vm_name           = "k8s-worker2"
+  vm_id   = 800
+  vm_name = "k8s-worker2"
   # Right-sized after the 2026-07-15 host-memory RCA.
   # Observed steady-state guest usage was ~2.2 GiB with ~5.6 GiB available,
   # so 6 GiB keeps parity with worker1 and avoids another 8 GiB fixed host

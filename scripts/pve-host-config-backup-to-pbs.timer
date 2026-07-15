@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily PVE host config backup to PBS
+
+[Timer]
+OnCalendar=*-*-* 03:45:00
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

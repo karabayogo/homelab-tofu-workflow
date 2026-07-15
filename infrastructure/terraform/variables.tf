@@ -149,3 +149,23 @@ variable "protect_garage_nodes" {
   type        = bool
   default     = true
 }
+
+# ── PVE host capacity guardrails ──
+
+variable "pve_host_total_memory_mb" {
+  description = "Physical RAM available on the single Proxmox host. Keep conservative so CI fails before host overcommit."
+  type        = number
+  default     = 63488
+}
+
+variable "pve_host_reserved_memory_mb" {
+  description = "Minimum RAM permanently reserved for the PVE host itself, ZFS ARC, daemons, and burst headroom."
+  type        = number
+  default     = 6144
+}
+
+variable "pve_unmanaged_reserved_memory_mb" {
+  description = "RAM reserved for legacy/manual VMs that are still outside Terraform. Default covers VM 201 and VM 300 until they are onboarded as cattle."
+  type        = number
+  default     = 24576
+}
