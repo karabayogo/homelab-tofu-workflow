@@ -75,6 +75,7 @@ jobs:
           secret_key = "${{ secrets.TOFU_BACKEND_SECRET_KEY }}"
           EOF
           chmod 600 /tmp/tofu-backend.hcl
+          unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL_OVERRIDE
           tofu init -reconfigure -backend-config=/tmp/tofu-backend.hcl
 
       - name: Verify multipath hardening on PRs

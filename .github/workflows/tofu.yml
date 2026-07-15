@@ -117,6 +117,7 @@ jobs:
       - name: Terraform init
         run: |
           cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
+          unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL_OVERRIDE
           ~/.local/bin/tofu init -upgrade -reconfigure -backend-config=/tmp/tofu-backend.hcl
 
       - name: Terraform plan
@@ -206,6 +207,7 @@ jobs:
       - name: Terraform init
         run: |
           cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
+          unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL_OVERRIDE
           ~/.local/bin/tofu init -upgrade -reconfigure -backend-config=/tmp/tofu-backend.hcl
 
       - name: Terraform apply
