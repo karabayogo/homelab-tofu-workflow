@@ -70,7 +70,7 @@ jobs:
         run: |
           cd infrastructure/terraform
           cat > /tmp/tofu-backend.hcl <<EOF
-          endpoint   = "${{ secrets.TOFU_BACKEND_ENDPOINT }}"
+          endpoint   = "http://192.168.1.246:9000"
           access_key = "${{ secrets.TOFU_BACKEND_ACCESS_KEY }}"
           secret_key = "${{ secrets.TOFU_BACKEND_SECRET_KEY }}"
           EOF
