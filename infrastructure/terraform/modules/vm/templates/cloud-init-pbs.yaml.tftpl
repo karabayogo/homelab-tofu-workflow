@@ -1,0 +1,108 @@
+#cloud-config
+# PROXMOX BACKUP SERVER profile.
+# Same-host PBS gives this homelab a clean restore tier without putting
+# Synology/NFS back into the Proxmox management plane.
+
+hostname: ${hostname}
+manage_etc_hosts: true
+
+package_update: true
+packages:
+  - qemu-guest-agent
+  - curl
+  - wget
+  - gnupg
+  - apt-transport-https
+  - ca-certificates
+
+disable_root: false
+users:
+  - name: root
+    ssh_authorized_keys:
+      - ${ssh_pub_key}
+  - name: ${admin_user}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    ssh_authorized_keys:
+      - ${ssh_pub_key}
+
+write_files:
+  - path: /opt/pbs-data-disk-setup.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      DISK="/dev/sdb"
+      MOUNT_POINT="/var/lib/proxmox-backup"
+
+      for i in $(seq 1 30); do
+        if [ -b "$DISK" ]; then
+          break
+        fi
+        sleep 2
+      done
+
+      if [ ! -b "$DISK" ]; then
+        echo "ERROR: $DISK not found after waiting 60s"
+        exit 1
+      fi
+
+      if ! blkid "$DISK" > /dev/null 2>&1; then
+        mkfs.ext4 -F -L pbs-datastore "$DISK"
+      fi
+
+      mkdir -p "$MOUNT_POINT"
+      if ! mountpoint -q "$MOUNT_POINT"; then
+        mount "$DISK" "$MOUNT_POINT"
+      fi
+
+      if ! awk '$2 == "/var/lib/proxmox-backup" { found=1 } END { exit found ? 0 : 1 }' /etc/fstab; then
+        echo "$DISK $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
+      fi
+
+      mkdir -p "$MOUNT_POINT/datastore"
+
+  - path: /opt/pbs-install.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      install -d -m 0755 /etc/apt/keyrings
+      curl -fsSL https://enterprise.proxmox.com/debian/proxmox-release-trixie.gpg -o /etc/apt/keyrings/proxmox-release-trixie.gpg
+      chmod 0644 /etc/apt/keyrings/proxmox-release-trixie.gpg
+
+      cat > /etc/apt/sources.list.d/pbs-install-repo.list <<'EOF'
+      deb [signed-by=/etc/apt/keyrings/proxmox-release-trixie.gpg] http://download.proxmox.com/debian/pbs trixie pbs-no-subscription
+      EOF
+
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -qq
+      apt-get install -y proxmox-backup-server
+
+  - path: /opt/pbs-bootstrap.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      DATASTORE_NAME="primary"
+      DATASTORE_PATH="/var/lib/proxmox-backup/datastore"
+
+      if ! proxmox-backup-manager datastore list | awk 'NR>1 {print $1}' | grep -qx "$DATASTORE_NAME"; then
+        proxmox-backup-manager datastore create "$DATASTORE_NAME" "$DATASTORE_PATH"
+      fi
+
+runcmd:
+  - [systemctl, enable, qemu-guest-agent]
+  - [systemctl, start, qemu-guest-agent]
+  - [bash, -lc, "/opt/pbs-install.sh"]
+  - [bash, -lc, "/opt/pbs-data-disk-setup.sh"]
+  - [bash, -lc, "/opt/pbs-bootstrap.sh"]
+
+power_state:
+  mode: reboot
+  condition: true
+  delay: 5

@@ -60,7 +60,7 @@ variable "k3s_token" {
   description = "k3s cluster join token (pass via TF_VAR or CI secret)"
   type        = string
   # NOT marked sensitive — must render into cloud-init templatefile() literally
-  default     = ""
+  default = ""
 }
 
 # ── Vault AppRole bootstrap for Garage nodes ──
@@ -76,16 +76,16 @@ variable "vault_approle_role_id" {
   description = "Vault AppRole Role ID used by Garage nodes to fetch secret/data/garage/cluster"
   type        = string
   # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
-  nullable    = false
-  default     = ""
+  nullable = false
+  default  = ""
 }
 
 variable "vault_approle_secret_id" {
   description = "Vault AppRole Secret ID used by Garage nodes to fetch secret/data/garage/cluster"
   type        = string
   # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
-  nullable    = false
-  default     = ""
+  nullable = false
+  default  = ""
 }
 
 # ── Vault AppRole bootstrap for migration helper (least privilege) ──
@@ -94,16 +94,16 @@ variable "vault_migration_approle_role_id" {
   description = "Vault AppRole Role ID used by migration helper to read secret/data/garage-s3 and secret/data/garage-s3-new"
   type        = string
   # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
-  nullable    = false
-  default     = ""
+  nullable = false
+  default  = ""
 }
 
 variable "vault_migration_approle_secret_id" {
   description = "Vault AppRole Secret ID used by migration helper to read secret/data/garage-s3 and secret/data/garage-s3-new"
   type        = string
   # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
-  nullable    = false
-  default     = ""
+  nullable = false
+  default  = ""
 }
 
 # ── Garage migration rollout flags (GitOps phase control) ──

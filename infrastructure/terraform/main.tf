@@ -232,8 +232,8 @@ module "k8s_master3" {
 module "k8s_worker1" {
   source = "./modules/vm"
 
-  vm_id             = 700
-  vm_name           = "k8s-worker1"
+  vm_id   = 700
+  vm_name = "k8s-worker1"
   # Bumped from 4096 to 8192 on 2026-07-08.
   # Same OOM cascade as worker2 (June 29 RCA): 4GB is insufficient for
   # worker nodes running observability workloads (prometheus, grafana,
@@ -328,9 +328,12 @@ module "k8s_worker2" {
 module "openclaw" {
   source = "./modules/vm"
 
-  vm_id             = 252
-  vm_name           = "openclaw"
-  memory_mb         = 4096
+  vm_id   = 252
+  vm_name = "openclaw"
+  # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
+  # Observed guest usage stayed well below 2 GiB, so 3 GiB keeps
+  # operational headroom without reserving a full 4 GiB on the host.
+  memory_mb         = 3072
   cpu_cores         = 2
   os_disk_size_gb   = 32
   data_disk_size_gb = 50
@@ -354,6 +357,49 @@ module "openclaw" {
   cloud_init_template = "base"
 
   protect_vm = false
+}
+
+# ── Same-host PBS restore tier (VM 905) ──────────────────────────────────
+# Strategic intent:
+#   - local restore UX via PBS
+#   - no Synology/NFS mount in the Proxmox management plane
+#   - keep the current VM201/Synology DR copy as the off-host layer
+#
+# This VM stays stopped until host memory headroom is reclaimed safely.
+module "backup_pbs1" {
+  source = "./modules/vm"
+
+  vm_id             = 905
+  vm_name           = "backup-pbs1"
+  memory_mb         = 4096
+  cpu_cores         = 2
+  cpu_units         = 2048
+  os_disk_size_gb   = 32
+  data_disk_size_gb = 500
+  vm_storage        = "local-zfs"
+  data_storage      = "bulkpool"
+  bridge            = "vmbr0"
+  vm_os_type        = "l26"
+  vm_bios           = "ovmf"
+  vm_machine        = "q35"
+  tags              = ["backup", "pbs"]
+  os_version        = "13"
+  static_ip         = "192.168.1.245"
+  vm_started        = false
+  onboot            = false
+
+  proxmox_host       = "192.168.1.50"
+  ssh_key_path       = "/home/moltbot/.ssh/pve-kai"
+  proxmox_node       = "pve"
+  cloud_image_family = "debian"
+
+  admin_user  = "ubuntu"
+  ssh_pub_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
+
+  k3s_enabled         = false
+  cloud_init_template = "pbs"
+
+  protect_vm = true
 }
 
 # ── Phase 2 Migration Helper VM (VM 904) ─────────────────────────────────
@@ -427,9 +473,10 @@ module "garage_n1" {
   source = "./modules/vm"
   count  = var.enable_garage_cluster ? 1 : 0
 
-  vm_id             = 901
-  vm_name           = "garage-n1"
-  memory_mb         = 4096
+  vm_id   = 901
+  vm_name = "garage-n1"
+  # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
+  memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
@@ -483,9 +530,10 @@ module "garage_n2" {
   source = "./modules/vm"
   count  = var.enable_garage_cluster ? 1 : 0
 
-  vm_id             = 902
-  vm_name           = "garage-n2"
-  memory_mb         = 4096
+  vm_id   = 902
+  vm_name = "garage-n2"
+  # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
+  memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
@@ -527,9 +575,10 @@ module "garage_n3" {
   source = "./modules/vm"
   count  = var.enable_garage_cluster ? 1 : 0
 
-  vm_id             = 903
-  vm_name           = "garage-n3"
-  memory_mb         = 4096
+  vm_id   = 903
+  vm_name = "garage-n3"
+  # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
+  memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64

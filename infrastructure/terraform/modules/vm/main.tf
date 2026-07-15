@@ -2,7 +2,7 @@
 # modules/vm/main.tf — Proxmox VM (bpg/proxmox v0.101+)
 #
 # Provisioning: Cloud-image boot (Mode A)
-#   Writes the Ubuntu cloud-image to the OS disk via SSH to Proxmox.
+#   Writes a supported cloud-image to the OS disk via SSH to Proxmox.
 #   Cloud-init runs on first boot via the initialization block.
 #
 # TWO-STEP CREATE (for net-new VMs):
@@ -21,22 +21,24 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
   source_raw {
     data = templatefile(
       var.k3s_enabled
-        ? (
-          var.cloud_init_template == "base"
-          ? "${path.module}/templates/cloud-init-base.yaml.tftpl"
-          : var.cloud_init_template == "garage"
-          ? "${path.module}/templates/cloud-init-garage.yaml.tftpl"
-          : var.cloud_init_template == "migration-helper"
-          ? "${path.module}/templates/cloud-init-migration-helper.yaml.tftpl"
-          : "${path.module}/templates/cloud-init-${var.k3s_role == "server" ? "master" : "worker"}.yaml.tftpl"
-        )
-        : (
-          var.cloud_init_template == "garage"
-          ? "${path.module}/templates/cloud-init-garage.yaml.tftpl"
-          : var.cloud_init_template == "migration-helper"
-          ? "${path.module}/templates/cloud-init-migration-helper.yaml.tftpl"
-          : "${path.module}/templates/cloud-init-base.yaml.tftpl"
-        ),
+      ? (
+        var.cloud_init_template == "base"
+        ? "${path.module}/templates/cloud-init-base.yaml.tftpl"
+        : var.cloud_init_template == "garage"
+        ? "${path.module}/templates/cloud-init-garage.yaml.tftpl"
+        : var.cloud_init_template == "migration-helper"
+        ? "${path.module}/templates/cloud-init-migration-helper.yaml.tftpl"
+        : "${path.module}/templates/cloud-init-${var.k3s_role == "server" ? "master" : "worker"}.yaml.tftpl"
+      )
+      : (
+        var.cloud_init_template == "garage"
+        ? "${path.module}/templates/cloud-init-garage.yaml.tftpl"
+        : var.cloud_init_template == "migration-helper"
+        ? "${path.module}/templates/cloud-init-migration-helper.yaml.tftpl"
+        : var.cloud_init_template == "pbs"
+        ? "${path.module}/templates/cloud-init-pbs.yaml.tftpl"
+        : "${path.module}/templates/cloud-init-base.yaml.tftpl"
+      ),
       {
         hostname          = var.vm_name
         ssh_pub_key       = var.ssh_pub_key
@@ -49,12 +51,12 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
         data_disk_size_gb = var.data_disk_size_gb
         admin_user        = var.admin_user
         # Garage S3 variables (only consumed by cloud-init-garage.yaml.tftpl)
-        garage_version             = var.garage_version
-        rpc_secret                 = var.rpc_secret
-        admin_token                = var.admin_token
-        vault_addr                 = var.vault_addr
-        vault_approle_role_id      = var.vault_approle_role_id
-        vault_approle_secret_id    = var.vault_approle_secret_id
+        garage_version          = var.garage_version
+        rpc_secret              = var.rpc_secret
+        admin_token             = var.admin_token
+        vault_addr              = var.vault_addr
+        vault_approle_role_id   = var.vault_approle_role_id
+        vault_approle_secret_id = var.vault_approle_secret_id
       }
     )
     file_name = "cloudinit-${var.vm_name}.yaml"
@@ -164,7 +166,7 @@ resource "proxmox_virtual_environment_vm" "this" {
   # Skips on every subsequent apply — VM is already provisioned once running.
   provisioner "local-exec" {
     when        = create
-    command     = "${path.module}/scripts/vm-provisioner.sh ${self.vm_id} ${var.vm_name} ${var.os_version} ${var.proxmox_host} ${var.ssh_key_path} ${var.vm_started}"
+    command     = "${path.module}/scripts/vm-provisioner.sh ${self.vm_id} ${var.vm_name} ${var.os_version} ${var.cloud_image_family} ${var.proxmox_host} ${var.ssh_key_path} ${var.vm_started}"
     environment = { HOME = "/home/runner" }
   }
 
@@ -181,7 +183,7 @@ resource "proxmox_virtual_environment_vm" "this" {
       ipv6_addresses,
       network_interface_names,
     ]
-    
+
   }
 }
 
@@ -200,7 +202,7 @@ resource "proxmox_virtual_environment_vm" "this" {
 #      triggers via a webhook or by writing to a ConfigMap/Secret.
 # DO NOT add local-exec provisioners that call kubectl from the tofu host.
 resource "null_resource" "k8s_worker_label" {
-  count = 0  # DISABLED — handled by cloud-init user_data instead
+  count = 0 # DISABLED — handled by cloud-init user_data instead
 
   triggers = {
     vm_id = proxmox_virtual_environment_vm.this[0].id

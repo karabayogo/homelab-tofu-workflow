@@ -1,6 +1,6 @@
 #!/bin/sh
-# vm-provisioner.sh — writes Ubuntu cloud-image to a Proxmox ZFS disk.
-# Usage: vm-provisioner.sh <vm_id> <vm_name> <os_version> <pve_host> <ssh_key_path> [start_after_provision]
+# vm-provisioner.sh — writes a cloud-image to a Proxmox ZFS disk.
+# Usage: vm-provisioner.sh <vm_id> <vm_name> <os_version> <image_family> <pve_host> <ssh_key_path> [start_after_provision]
 #
 # IDEMPOTENT: safe to run on running or stopped VMs. Stops VM if needed,
 # writes the cloud-image to the OS disk (largest zvol, not EFI), and
@@ -10,20 +10,44 @@ set -eu
 VMID="$1"
 VM_NAME="$2"
 OS_VERSION="$3"
-PVE_HOST="$4"
-SSH_KEY="$5"
-START_AFTER_PROVISION="${6:-true}"
+IMAGE_FAMILY="$4"
+PVE_HOST="$5"
+SSH_KEY="$6"
+START_AFTER_PROVISION="${7:-true}"
 
 SSH_CMD="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ${SSH_KEY}"
-IMAGE_CACHE="/tmp/vm-gitops-ubuntu-${OS_VERSION}-cloudimg-amd64.img"
-IMAGE_URL="https://cloud-images.ubuntu.com/releases/${OS_VERSION}/release/ubuntu-${OS_VERSION}-server-cloudimg-amd64.img"
 
-echo "[vm-gitops] Provisioning VM ${VMID} (${VM_NAME}) with Ubuntu ${OS_VERSION} cloud-image..."
+case "${IMAGE_FAMILY}" in
+  ubuntu)
+    IMAGE_NAME="ubuntu-${OS_VERSION}-server-cloudimg-amd64.img"
+    IMAGE_URL="https://cloud-images.ubuntu.com/releases/${OS_VERSION}/release/${IMAGE_NAME}"
+    ;;
+  debian)
+    case "${OS_VERSION}" in
+      12) DEBIAN_SUITE="bookworm" ;;
+      13) DEBIAN_SUITE="trixie" ;;
+      *)
+        echo "[vm-gitops] Unsupported Debian version '${OS_VERSION}'." >&2
+        exit 2
+        ;;
+    esac
+    IMAGE_NAME="debian-${OS_VERSION}-genericcloud-amd64.qcow2"
+    IMAGE_URL="https://cloud.debian.org/images/cloud/${DEBIAN_SUITE}/latest/${IMAGE_NAME}"
+    ;;
+  *)
+    echo "[vm-gitops] Unsupported image family '${IMAGE_FAMILY}'." >&2
+    exit 2
+    ;;
+esac
+
+IMAGE_CACHE="/tmp/${IMAGE_NAME}"
+
+echo "[vm-gitops] Provisioning VM ${VMID} (${VM_NAME}) with ${IMAGE_FAMILY} ${OS_VERSION} cloud-image..."
 
 # Step 1: Download cloud-image on PVE host
 ${SSH_CMD} "root@${PVE_HOST}" "
   if [ ! -f '${IMAGE_CACHE}' ]; then
-    echo '[vm-gitops] Downloading Ubuntu ${OS_VERSION} cloud-image (cache miss)...'
+    echo '[vm-gitops] Downloading ${IMAGE_FAMILY} ${OS_VERSION} cloud-image (cache miss)...'
     curl -sL '${IMAGE_URL}' -o '${IMAGE_CACHE}'
     echo '[vm-gitops] Download complete: '\$(ls -lh ${IMAGE_CACHE} | awk '{print \$5}')''
   else

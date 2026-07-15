@@ -117,9 +117,20 @@ variable "tags" {
 }
 
 variable "os_version" {
-  description = "Ubuntu LTS version (e.g. 24.04). Used to identify the cloud-image."
+  description = "Guest OS image version (for example Ubuntu 24.04 or Debian 13). Used to identify the cloud-image."
   type        = string
   default     = "24.04"
+}
+
+variable "cloud_image_family" {
+  description = "Cloud image family to provision onto the OS disk."
+  type        = string
+  default     = "ubuntu"
+
+  validation {
+    condition     = contains(["ubuntu", "debian"], var.cloud_image_family)
+    error_message = "cloud_image_family must be one of: ubuntu, debian"
+  }
 }
 
 variable "ssh_key_path" {
@@ -176,7 +187,7 @@ variable "k3s_token" {
   description = "k3s cluster join token (from /var/lib/rancher/k3s/server/token on master)"
   type        = string
   # NOT marked sensitive — templatefile() must render the actual value into cloud-init
-  default     = ""
+  default = ""
 }
 
 variable "k3s_role" {
@@ -232,13 +243,13 @@ variable "k3s_enabled" {
 }
 
 variable "cloud_init_template" {
-  description = "Cloud-init template profile: master, worker, base, garage, or migration-helper."
+  description = "Cloud-init template profile: master, worker, base, garage, migration-helper, or pbs."
   type        = string
   default     = "worker"
 
   validation {
-    condition     = contains(["master", "worker", "base", "garage", "migration-helper"], var.cloud_init_template)
-    error_message = "cloud_init_template must be one of: master, worker, base, garage, migration-helper"
+    condition     = contains(["master", "worker", "base", "garage", "migration-helper", "pbs"], var.cloud_init_template)
+    error_message = "cloud_init_template must be one of: master, worker, base, garage, migration-helper, pbs"
   }
 }
 
@@ -254,14 +265,14 @@ variable "rpc_secret" {
   description = "Garage RPC secret for inter-node communication (must match across all Garage nodes)"
   type        = string
   # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
-  default     = ""  # Must be set explicitly for garage template
+  default = "" # Must be set explicitly for garage template
 }
 
 variable "admin_token" {
   description = "Garage admin API token (generate with: openssl rand -hex 32)"
   type        = string
   # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
-  default     = ""  # Must be set explicitly for garage template
+  default = "" # Must be set explicitly for garage template
 }
 
 # ── Vault AppRole (used by cloud-init-garage.yaml.tftpl to fetch real secrets at boot) ──
@@ -276,12 +287,12 @@ variable "vault_approle_role_id" {
   description = "Vault AppRole Role ID for Garage secret fetch (read-only access to secret/data/garage/cluster)"
   type        = string
   # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
-  default     = ""
+  default = ""
 }
 
 variable "vault_approle_secret_id" {
   description = "Vault AppRole Secret ID for Garage secret fetch"
   type        = string
   # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
-  default     = ""
+  default = ""
 }
