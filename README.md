@@ -81,6 +81,7 @@ jobs:
 - **PRs** trigger a `tofu plan` (read-only, no changes)
 - **Pushes to main** trigger a `tofu apply` (with `environment: production` gate)
 - State is stored in a dedicated S3-compatible control-plane backend with `us-east-1` SigV4 compatibility
+- CI uses a dedicated compatibility credential on `tofu-state1` so backend migrations do not break runners during control-plane cutovers
 - VMs are cattle: `prevent_destroy = true`, imported via `tofu import`, cloud-init handles k3s bootstrap
 - Worker nodes get `node-role.kubernetes.io/worker` label applied via post-create kubectl hook
 # smoke test 2026-05-20T22:35:35+10:00
