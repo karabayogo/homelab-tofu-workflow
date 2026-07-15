@@ -1,0 +1,148 @@
+#cloud-config
+# Dedicated state-backend profile.
+# This is a small management-plane VM that hosts only OpenTofu state,
+# decoupling infra reconciliation from the mutable Garage workload cluster.
+
+hostname: ${hostname}
+manage_etc_hosts: true
+
+package_update: true
+packages:
+  - qemu-guest-agent
+  - curl
+  - wget
+  - ca-certificates
+
+disable_root: false
+users:
+  - name: root
+    ssh_authorized_keys:
+      - ${ssh_pub_key}
+  - name: ${admin_user}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    ssh_authorized_keys:
+      - ${ssh_pub_key}
+
+write_files:
+  - path: /opt/state-s3-data-disk-setup.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      DISK="/dev/sdb"
+      MOUNT_POINT="/var/lib/minio"
+
+      for i in $(seq 1 30); do
+        if [ -b "$DISK" ]; then
+          break
+        fi
+        sleep 2
+      done
+
+      if [ ! -b "$DISK" ]; then
+        echo "ERROR: $DISK not found after waiting 60s"
+        exit 1
+      fi
+
+      if ! blkid "$DISK" > /dev/null 2>&1; then
+        mkfs.ext4 -F -L state-s3-data "$DISK"
+      fi
+
+      mkdir -p "$MOUNT_POINT"
+      if ! mountpoint -q "$MOUNT_POINT"; then
+        mount "$DISK" "$MOUNT_POINT"
+      fi
+
+      if ! awk '$2 == "/var/lib/minio" { found=1 } END { exit found ? 0 : 1 }' /etc/fstab; then
+        echo "$DISK $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
+      fi
+
+      mkdir -p "$MOUNT_POINT/data"
+
+  - path: /opt/state-s3-install.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      install -d -m 0755 /usr/local/bin
+      if [ ! -x /usr/local/bin/minio ]; then
+        curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio -o /usr/local/bin/minio
+        chmod 0755 /usr/local/bin/minio
+      fi
+
+      if [ ! -x /usr/local/bin/mc ]; then
+        curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
+        chmod 0755 /usr/local/bin/mc
+      fi
+
+      id -u minio >/dev/null 2>&1 || useradd --system --home /var/lib/minio --shell /usr/sbin/nologin minio
+      chown -R minio:minio /var/lib/minio
+
+  - path: /etc/default/minio
+    permissions: "0600"
+    content: |
+      MINIO_ROOT_USER=${state_s3_access_key}
+      MINIO_ROOT_PASSWORD=${state_s3_secret_key}
+      MINIO_VOLUMES=/var/lib/minio/data
+      MINIO_OPTS=--address :9000 --console-address 127.0.0.1:9001
+
+  - path: /etc/systemd/system/minio.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=MinIO state backend
+      After=network-online.target
+      Wants=network-online.target
+      RequiresMountsFor=/var/lib/minio
+
+      [Service]
+      User=minio
+      Group=minio
+      EnvironmentFile=/etc/default/minio
+      ExecStart=/usr/local/bin/minio server $MINIO_VOLUMES $MINIO_OPTS
+      Restart=on-failure
+      RestartSec=5s
+      NoNewPrivileges=true
+      PrivateTmp=true
+      ProtectSystem=strict
+      ProtectHome=true
+      ReadWritePaths=/var/lib/minio
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /opt/state-s3-bootstrap.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      export MC_CONFIG_DIR=/root/.mc
+      for i in $(seq 1 30); do
+        if /usr/local/bin/mc alias set local http://127.0.0.1:9000 "${state_s3_access_key}" "${state_s3_secret_key}" >/dev/null 2>&1; then
+          break
+        fi
+        sleep 2
+      done
+
+      /usr/local/bin/mc mb --ignore-existing "local/${state_s3_bucket_name}"
+
+runcmd:
+  - [ufw, disable]
+  - [systemctl, enable, qemu-guest-agent]
+  - [systemctl, start, qemu-guest-agent]
+  - [bash, -lc, "/opt/state-s3-data-disk-setup.sh"]
+  - [bash, -lc, "/opt/state-s3-install.sh"]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, minio]
+  - [systemctl, start, minio]
+  - [bash, -lc, "/opt/state-s3-bootstrap.sh"]
+
+power_state:
+  mode: reboot
+  condition: true
+  delay: 5

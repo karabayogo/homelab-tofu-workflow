@@ -2,7 +2,7 @@
 # main.tf — Proxmox VM definitions (k8s cattle)
 #
 # ALL k8s cluster VMs declared here. Managed by OpenTofu
-# with Garage S3 remote state. Reconciled by GitHub Actions.
+# with an S3-compatible remote state backend. Reconciled by GitHub Actions.
 #
 # DO NOT EDIT MANUALLY — changes must go through tofu plan/apply.
 # ============================================================
@@ -19,7 +19,8 @@ module "garage_s3" {
 
 terraform {
   # Backend is configured in backend.tf
-  # Credentials via env vars: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_OVERRIDE
+  # Runtime endpoint/credentials are injected at init time by GitHub Actions
+  # or local operator commands via -backend-config.
 }
 
 check "garage_bootstrap_prereqs" {
@@ -398,6 +399,50 @@ module "backup_pbs1" {
 
   k3s_enabled         = false
   cloud_init_template = "pbs"
+
+  protect_vm = true
+}
+
+# ── Dedicated state backend VM (VM 906) ──────────────────────────────────
+# Strategic intent:
+#   - break the circular dependency between OpenTofu state and the Garage cluster
+#   - keep state on a small, dedicated management-plane VM instead of a workload S3 tier
+#   - provide a clean migration landing zone before the backend endpoint secret is rotated
+module "tofu_state1" {
+  source = "./modules/vm"
+
+  vm_id             = 906
+  vm_name           = "tofu-state1"
+  memory_mb         = 1024
+  cpu_cores         = 1
+  cpu_units         = 512
+  os_disk_size_gb   = 16
+  data_disk_size_gb = 32
+  vm_storage        = "local-zfs"
+  data_storage      = "bulkpool"
+  bridge            = "vmbr0"
+  vm_os_type        = "l26"
+  vm_bios           = "ovmf"
+  vm_machine        = "q35"
+  tags              = ["control-plane", "state-backend"]
+  os_version        = "13"
+  static_ip         = "192.168.1.246"
+  vm_started        = true
+  onboot            = true
+
+  proxmox_host       = "192.168.1.50"
+  ssh_key_path       = "/home/moltbot/.ssh/pve-kai"
+  proxmox_node       = "pve"
+  cloud_image_family = "debian"
+
+  admin_user  = "ubuntu"
+  ssh_pub_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
+
+  k3s_enabled          = false
+  cloud_init_template  = "state-s3"
+  state_s3_access_key  = var.state_backend_access_key
+  state_s3_secret_key  = var.state_backend_secret_key
+  state_s3_bucket_name = "terraform-state"
 
   protect_vm = true
 }

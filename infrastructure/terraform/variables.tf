@@ -41,16 +41,28 @@ variable "bridge" {
 }
 
 variable "garage_access_key" {
-  description = "Garage S3 access key for remote state backend"
+  description = "Garage S3 access key for Garage object-store administration and bootstrap resources"
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "garage_secret_key" {
-  description = "Garage S3 secret key for remote state backend"
+  description = "Garage S3 secret key for Garage object-store administration and bootstrap resources"
   type        = string
   sensitive   = true
+  default     = ""
+}
+
+variable "state_backend_access_key" {
+  description = "Access key used by the dedicated state-backend VM. Not marked sensitive because it must render into cloud-init literally."
+  type        = string
+  default     = ""
+}
+
+variable "state_backend_secret_key" {
+  description = "Secret key used by the dedicated state-backend VM. Not marked sensitive because it must render into cloud-init literally."
+  type        = string
   default     = ""
 }
 

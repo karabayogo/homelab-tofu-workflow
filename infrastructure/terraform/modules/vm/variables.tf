@@ -243,13 +243,13 @@ variable "k3s_enabled" {
 }
 
 variable "cloud_init_template" {
-  description = "Cloud-init template profile: master, worker, base, garage, migration-helper, or pbs."
+  description = "Cloud-init template profile: master, worker, base, garage, migration-helper, pbs, or state-s3."
   type        = string
   default     = "worker"
 
   validation {
-    condition     = contains(["master", "worker", "base", "garage", "migration-helper", "pbs"], var.cloud_init_template)
-    error_message = "cloud_init_template must be one of: master, worker, base, garage, migration-helper, pbs"
+    condition     = contains(["master", "worker", "base", "garage", "migration-helper", "pbs", "state-s3"], var.cloud_init_template)
+    error_message = "cloud_init_template must be one of: master, worker, base, garage, migration-helper, pbs, state-s3"
   }
 }
 
@@ -295,4 +295,24 @@ variable "vault_approle_secret_id" {
   type        = string
   # NOT marked sensitive — templatefile() masks ALL vars if any is sensitive
   default = ""
+}
+
+# ── Dedicated state backend VM variables ──
+
+variable "state_s3_access_key" {
+  description = "Root access key for the dedicated state-backend VM"
+  type        = string
+  default     = ""
+}
+
+variable "state_s3_secret_key" {
+  description = "Root secret key for the dedicated state-backend VM"
+  type        = string
+  default     = ""
+}
+
+variable "state_s3_bucket_name" {
+  description = "Bootstrap bucket name created by the dedicated state-backend VM"
+  type        = string
+  default     = "terraform-state"
 }

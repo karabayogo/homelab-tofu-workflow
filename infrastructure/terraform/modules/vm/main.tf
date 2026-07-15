@@ -37,6 +37,8 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
         ? "${path.module}/templates/cloud-init-migration-helper.yaml.tftpl"
         : var.cloud_init_template == "pbs"
         ? "${path.module}/templates/cloud-init-pbs.yaml.tftpl"
+        : var.cloud_init_template == "state-s3"
+        ? "${path.module}/templates/cloud-init-state-s3.yaml.tftpl"
         : "${path.module}/templates/cloud-init-base.yaml.tftpl"
       ),
       {
@@ -57,6 +59,9 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
         vault_addr              = var.vault_addr
         vault_approle_role_id   = var.vault_approle_role_id
         vault_approle_secret_id = var.vault_approle_secret_id
+        state_s3_access_key     = var.state_s3_access_key
+        state_s3_secret_key     = var.state_s3_secret_key
+        state_s3_bucket_name    = var.state_s3_bucket_name
       }
     )
     file_name = "cloudinit-${var.vm_name}.yaml"

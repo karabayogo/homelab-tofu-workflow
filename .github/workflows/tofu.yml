@@ -24,6 +24,12 @@ on:
         required: true
       PVE_SSH_PRIVATE_KEY:
         required: true
+      TOFU_BACKEND_ACCESS_KEY:
+        required: true
+      TOFU_BACKEND_SECRET_KEY:
+        required: true
+      TOFU_BACKEND_ENDPOINT:
+        required: true
       GARAGE_ACCESS_KEY:
         required: true
       GARAGE_SECRET_KEY:
@@ -58,6 +64,8 @@ jobs:
       TF_VAR_vault_approle_secret_id: ${{ secrets.VAULT_APPROLE_SECRET_ID }}
       TF_VAR_vault_migration_approle_role_id: ${{ secrets.VAULT_MIGRATION_APPROLE_ROLE_ID }}
       TF_VAR_vault_migration_approle_secret_id: ${{ secrets.VAULT_MIGRATION_APPROLE_SECRET_ID }}
+      TF_VAR_state_backend_access_key: ${{ secrets.TOFU_BACKEND_ACCESS_KEY }}
+      TF_VAR_state_backend_secret_key: ${{ secrets.TOFU_BACKEND_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -97,10 +105,19 @@ jobs:
           echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
           chmod 600 "$HOME/.ssh/pve-kai"
 
+      - name: Write backend config
+        run: |
+          cat > /tmp/tofu-backend.hcl <<EOF
+          endpoint   = "${{ secrets.TOFU_BACKEND_ENDPOINT }}"
+          access_key = "${{ secrets.TOFU_BACKEND_ACCESS_KEY }}"
+          secret_key = "${{ secrets.TOFU_BACKEND_SECRET_KEY }}"
+          EOF
+          chmod 600 /tmp/tofu-backend.hcl
+
       - name: Terraform init
         run: |
           cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
-          ~/.local/bin/tofu init -upgrade
+          ~/.local/bin/tofu init -upgrade -reconfigure -backend-config=/tmp/tofu-backend.hcl
 
       - name: Terraform plan
         # -refresh=false avoids bpg/proxmox provider "Plugin did not respond"
@@ -136,6 +153,8 @@ jobs:
       TF_VAR_vault_approle_secret_id: ${{ secrets.VAULT_APPROLE_SECRET_ID }}
       TF_VAR_vault_migration_approle_role_id: ${{ secrets.VAULT_MIGRATION_APPROLE_ROLE_ID }}
       TF_VAR_vault_migration_approle_secret_id: ${{ secrets.VAULT_MIGRATION_APPROLE_SECRET_ID }}
+      TF_VAR_state_backend_access_key: ${{ secrets.TOFU_BACKEND_ACCESS_KEY }}
+      TF_VAR_state_backend_secret_key: ${{ secrets.TOFU_BACKEND_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -175,10 +194,19 @@ jobs:
           echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
           chmod 600 "$HOME/.ssh/pve-kai"
 
+      - name: Write backend config
+        run: |
+          cat > /tmp/tofu-backend.hcl <<EOF
+          endpoint   = "${{ secrets.TOFU_BACKEND_ENDPOINT }}"
+          access_key = "${{ secrets.TOFU_BACKEND_ACCESS_KEY }}"
+          secret_key = "${{ secrets.TOFU_BACKEND_SECRET_KEY }}"
+          EOF
+          chmod 600 /tmp/tofu-backend.hcl
+
       - name: Terraform init
         run: |
           cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
-          ~/.local/bin/tofu init -upgrade
+          ~/.local/bin/tofu init -upgrade -reconfigure -backend-config=/tmp/tofu-backend.hcl
 
       - name: Terraform apply
         # -refresh=false avoids bpg/proxmox provider "Plugin did not respond"
