@@ -19,7 +19,7 @@ users:
     ssh_authorized_keys:
       - ${ssh_pub_key}
   - name: ${admin_user}
-    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
     lock_passwd: false
     ssh_authorized_keys:

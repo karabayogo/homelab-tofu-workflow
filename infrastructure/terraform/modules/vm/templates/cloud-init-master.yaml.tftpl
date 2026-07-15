@@ -5,8 +5,8 @@ fqdn: ${hostname}.local
 manage_etc_hosts: true
 
 users:
-  - name: ubuntu
-    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+  - name: ${admin_user}
+    sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
     lock_passwd: true
     ssh_authorized_keys:

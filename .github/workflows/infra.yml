@@ -92,6 +92,40 @@ jobs:
           test -f "$SCRIPT_PATH"
           bash "$SCRIPT_PATH" --enforce
 
+  k8s-cloud-init-sudoers-hygiene:
+    needs: tofu
+    if: needs.tofu.result == 'success'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            infrastructure
+            scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Write node SSH key
+        run: |
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
+          chmod 600 "$HOME/.ssh/pve-kai"
+
+      - name: Verify cloud-init sudoers hygiene on PRs
+        if: github.event_name == 'pull_request'
+        run: |
+          SCRIPT_PATH="scripts/enforce-k8s-cloud-init-sudoers.sh"
+          test -f "$SCRIPT_PATH"
+          bash "$SCRIPT_PATH" --check
+
+      - name: Enforce cloud-init sudoers hygiene on managed k8s nodes
+        if: github.event_name != 'pull_request'
+        run: |
+          SCRIPT_PATH="scripts/enforce-k8s-cloud-init-sudoers.sh"
+          test -f "$SCRIPT_PATH"
+          bash "$SCRIPT_PATH" --enforce
+
   garage-vm-bootstrap-reconcile:
     needs: tofu
     if: needs.tofu.result == 'success'

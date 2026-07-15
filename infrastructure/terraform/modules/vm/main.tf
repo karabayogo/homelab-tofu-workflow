@@ -148,14 +148,6 @@ resource "proxmox_virtual_environment_vm" "this" {
         gateway = "192.168.1.1"
       }
     }
-
-    user_account {
-      keys = concat(
-        var.ssh_pub_key != "" ? [var.ssh_pub_key] : [],
-        var.tofu_deploy_key != "" ? [var.tofu_deploy_key] : [],
-      )
-      username = var.admin_user
-    }
   }
 
   agent {
