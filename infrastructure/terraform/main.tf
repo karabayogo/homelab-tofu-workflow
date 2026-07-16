@@ -149,18 +149,16 @@ module "k8s_master2" {
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
 
-  # Longhorn node labels — declarative at IaC layer
-  # STRATEGIC: Control-plane nodes are PERMANENTLY evicted from Longhorn replica placement.
-  # The iSCSI medium error RCA (2026-07-14) proved that Longhorn iSCSI block devices on
-  # control-plane nodes cause chronic kernel-level medium errors. By evicting all masters,
-  # Longhorn will never place replicas here, eliminating iSCSI traffic on master nodes.
-  # Longhorn volumes for control-plane workloads (Vault, Prometheus) will use replicas on
-  # worker nodes only, with the master node acting as a pure iSCSI client (read-only attach).
+  # Longhorn node labels - declarative at IaC layer.
+  # Control-plane protection policy: master1/master2 stay excluded from Longhorn
+  # replica placement so etcd and apiserver capacity remains reserved for cluster
+  # control-plane duties. The third storage failure domain is provided by an
+  # explicit opt-in on master3 until a dedicated third worker exists.
   node_labels = {
     "node.longhorn.io/evicted"             = "true"
     "node.longhorn.io/create-default-disk" = "false"
   }
-  # No additional post-create Longhorn labels on control-plane nodes.
+  # No additional post-create Longhorn labels on protected control-plane nodes.
   post_create_node_labels = {}
 
   protect_vm = true
@@ -206,18 +204,16 @@ module "k8s_master1" {
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
 
-  # Longhorn node labels — declarative at IaC layer
-  # STRATEGIC: Control-plane nodes are PERMANENTLY evicted from Longhorn replica placement.
-  # The iSCSI medium error RCA (2026-07-14) proved that Longhorn iSCSI block devices on
-  # control-plane nodes cause chronic kernel-level medium errors. By evicting all masters,
-  # Longhorn will never place replicas here, eliminating iSCSI traffic on master nodes.
-  # Longhorn volumes for control-plane workloads (Vault, Prometheus) will use replicas on
-  # worker nodes only, with the master node acting as a pure iSCSI client (read-only attach).
+  # Longhorn node labels - declarative at IaC layer.
+  # Control-plane protection policy: master1/master2 stay excluded from Longhorn
+  # replica placement so etcd and apiserver capacity remains reserved for cluster
+  # control-plane duties. The third storage failure domain is provided by an
+  # explicit opt-in on master3 until a dedicated third worker exists.
   node_labels = {
     "node.longhorn.io/evicted"             = "true"
     "node.longhorn.io/create-default-disk" = "false"
   }
-  # No additional post-create Longhorn labels on control-plane nodes.
+  # No additional post-create Longhorn labels on protected control-plane nodes.
   post_create_node_labels = {}
 
   protect_vm = true
@@ -263,18 +259,17 @@ module "k8s_master3" {
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
 
-  # Longhorn node labels — declarative at IaC layer
-  # STRATEGIC: Control-plane nodes are PERMANENTLY evicted from Longhorn replica placement.
-  # The iSCSI medium error RCA (2026-07-14) proved that Longhorn iSCSI block devices on
-  # control-plane nodes cause chronic kernel-level medium errors. By evicting all masters,
-  # Longhorn will never place replicas here, eliminating iSCSI traffic on master nodes.
-  # Longhorn volumes for control-plane workloads (Vault, Prometheus) will use replicas on
-  # worker nodes only, with the master node acting as a pure iSCSI client (read-only attach).
+  # Longhorn node labels - declarative at IaC layer.
+  # Strategic exception: master3 is the explicit third Longhorn replica node until
+  # the homelab has a dedicated third worker/storage VM. This turns 3-replica volumes
+  # into a topologically feasible design again instead of forcing Longhorn to place
+  # multiple replicas on the same worker node.
   node_labels = {
-    "node.longhorn.io/evicted"             = "true"
-    "node.longhorn.io/create-default-disk" = "false"
+    "node.longhorn.io/create-default-disk"            = "true"
+    "node.kubernetes.io/longhorn-storage"             = "available"
+    "storage.k8s.workbench.io/allow-longhorn-replica" = "true"
   }
-  # No additional post-create Longhorn labels on control-plane nodes.
+  # No additional post-create labels. Node registration labels are the source of truth.
   post_create_node_labels = {}
 
   protect_vm = true
