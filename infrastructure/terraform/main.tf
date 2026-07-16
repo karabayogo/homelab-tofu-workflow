@@ -305,6 +305,7 @@ module "k8s_worker1" {
   static_ip         = "192.168.1.204"
   k3s_token         = var.k3s_token
   k3s_role          = "agent"
+  k3s_join_server   = "192.168.1.202" # stable primary server endpoint for worker joins
   vm_started        = true
 
   proxmox_host = "192.168.1.50"
@@ -315,9 +316,13 @@ module "k8s_worker1" {
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
 
-  # Longhorn node labels - declarative at IaC layer
+  # Longhorn node labels - declarative at IaC layer.
+  # Strategic policy: workers provide one true Longhorn replica failure domain each.
+  # The additional data disk is the intended replica disk; the node-taint-enforcer
+  # reconciles the Longhorn node CR so the OS disk is not used as a second faux replica.
   node_labels = {
-    "node.longhorn.io/create-default-disk" = "true"
+    "node.longhorn.io/create-default-disk"              = "true"
+    "storage.k8s.workbench.io/longhorn-primary-disk"    = "longhorn-additional"
   }
   post_create_node_labels = {
     "node.kubernetes.io/longhorn-storage" = "available"
@@ -355,6 +360,7 @@ module "k8s_worker2" {
   static_ip         = "192.168.1.205"
   k3s_token         = var.k3s_token
   k3s_role          = "agent"
+  k3s_join_server   = "192.168.1.202" # stable primary server endpoint for worker joins
   vm_started        = true
 
   proxmox_host = "192.168.1.50"
@@ -365,9 +371,13 @@ module "k8s_worker2" {
   ssh_pub_key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIABcqqosImBbChMBDBgLkt8KRF4MfVQc7uE6ExLHuGXu kai@moltbot"
   tofu_deploy_key = ""
 
-  # Longhorn node labels - declarative at IaC layer
+  # Longhorn node labels - declarative at IaC layer.
+  # Strategic policy: workers provide one true Longhorn replica failure domain each.
+  # The additional data disk is the intended replica disk; the node-taint-enforcer
+  # reconciles the Longhorn node CR so the OS disk is not used as a second faux replica.
   node_labels = {
-    "node.longhorn.io/create-default-disk" = "true"
+    "node.longhorn.io/create-default-disk"              = "true"
+    "storage.k8s.workbench.io/longhorn-primary-disk"    = "longhorn-additional"
   }
   post_create_node_labels = {
     "node.kubernetes.io/longhorn-storage" = "available"
