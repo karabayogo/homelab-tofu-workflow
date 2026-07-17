@@ -51,8 +51,163 @@ runcmd:
   # Kernel params
   - sysctl --system
 
-  # Install k3s server (control plane) with node labels
-  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" K3S_TOKEN="${k3s_token}" sh -s - server --server "https://${k3s_join_server}:6443" --node-ip "${static_ip}"${node_labels_args}
+  # Render declarative k3s + kube-vip config before the service starts.
+  - mkdir -p /etc/rancher/k3s /var/lib/rancher/k3s/server/manifests
+  - |
+    cat > /etc/rancher/k3s/config.yaml <<'EOF'
+    token: "${k3s_token}"
+    write-kubeconfig-mode: "644"
+    node-ip: "${static_ip}"
+    tls-san:
+      - "${k3s_api_vip}"
+%{ if k3s_cluster_init ~}
+    cluster-init: true
+%{ else ~}
+    server: "https://${k3s_join_server}:6443"
+%{ endif ~}
+%{ if node_labels_yaml != "" ~}
+    node-label:
+${node_labels_yaml}
+%{ endif ~}
+    EOF
+  - |
+    cat > /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml <<'EOF'
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: kube-vip
+      namespace: kube-system
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      annotations:
+        rbac.authorization.kubernetes.io/autoupdate: "true"
+      name: system:kube-vip-role
+    rules:
+      - apiGroups: [""]
+        resources: ["services/status"]
+        verbs: ["update"]
+      - apiGroups: [""]
+        resources: ["services", "endpoints"]
+        verbs: ["list", "get", "watch", "update"]
+      - apiGroups: [""]
+        resources: ["nodes"]
+        verbs: ["list", "get", "watch", "update", "patch"]
+      - apiGroups: ["coordination.k8s.io"]
+        resources: ["leases"]
+        verbs: ["list", "get", "watch", "update", "create"]
+      - apiGroups: ["discovery.k8s.io"]
+        resources: ["endpointslices"]
+        verbs: ["list", "get", "watch", "update"]
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["list"]
+    ---
+    kind: ClusterRoleBinding
+    apiVersion: rbac.authorization.k8s.io/v1
+    metadata:
+      name: system:kube-vip-binding
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: system:kube-vip-role
+    subjects:
+      - kind: ServiceAccount
+        name: kube-vip
+        namespace: kube-system
+    EOF
+  - |
+    cat > /var/lib/rancher/k3s/server/manifests/kube-vip.yaml <<'EOF'
+    apiVersion: apps/v1
+    kind: DaemonSet
+    metadata:
+      name: kube-vip-ds
+      namespace: kube-system
+      labels:
+        app.kubernetes.io/name: kube-vip
+        app.kubernetes.io/component: control-plane-vip
+    spec:
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: kube-vip
+      updateStrategy:
+        type: RollingUpdate
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: kube-vip
+            app.kubernetes.io/component: control-plane-vip
+        spec:
+          serviceAccountName: kube-vip
+          hostNetwork: true
+          priorityClassName: system-node-critical
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node-role.kubernetes.io/master
+                        operator: Exists
+                  - matchExpressions:
+                      - key: node-role.kubernetes.io/control-plane
+                        operator: Exists
+          tolerations:
+            - effect: NoSchedule
+              operator: Exists
+            - effect: NoExecute
+              operator: Exists
+          containers:
+            - name: kube-vip
+              image: ghcr.io/kube-vip/kube-vip:${kube_vip_version}
+              imagePullPolicy: IfNotPresent
+              args:
+                - manager
+              env:
+                - name: vip_arp
+                  value: "true"
+                - name: port
+                  value: "6443"
+%{ if k3s_api_vip_interface != "" ~}
+                - name: vip_interface
+                  value: "${k3s_api_vip_interface}"
+%{ endif ~}
+                - name: vip_subnet
+                  value: "32"
+                - name: cp_enable
+                  value: "true"
+                - name: cp_namespace
+                  value: "kube-system"
+                - name: svc_enable
+                  value: "false"
+                - name: vip_ddns
+                  value: "false"
+                - name: vip_leaderelection
+                  value: "true"
+                - name: vip_leaseduration
+                  value: "5"
+                - name: vip_renewdeadline
+                  value: "3"
+                - name: vip_retryperiod
+                  value: "1"
+                - name: address
+                  value: "${k3s_api_vip}"
+              securityContext:
+                capabilities:
+                  add:
+                    - NET_ADMIN
+                    - NET_RAW
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+    EOF
+
+  # Install k3s server (control plane). Cluster topology lives in config.yaml.
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" sh -s - server
 
   # QEMU guest agent — required for qm agent and qm guest exec
   - systemctl enable qemu-guest-agent

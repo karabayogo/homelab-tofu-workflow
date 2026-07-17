@@ -120,10 +120,21 @@ runcmd:
   - ['/opt/longhorn-setup.sh']
   %{ endif ~}
 
-  # Install k3s agent with node labels
-  # --node-label node-role.kubernetes.io/worker is REMOVED — restricted namespace in k3s v1.33+
-  # Worker label is applied by tofu post-create hook (kubectl label node)
-  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" K3S_URL="https://${k3s_join_server}:6443" K3S_TOKEN="${k3s_token}" sh -s - --node-ip "${static_ip}"${node_labels_args}
+  # Render declarative k3s agent config before the service starts.
+  - mkdir -p /etc/rancher/k3s
+  - |
+    cat > /etc/rancher/k3s/config.yaml <<'EOF'
+    server: "https://${k3s_join_server}:6443"
+    token: "${k3s_token}"
+    node-ip: "${static_ip}"
+%{ if node_labels_yaml != "" ~}
+    node-label:
+${node_labels_yaml}
+%{ endif ~}
+    EOF
+
+  # Install k3s agent. Cluster topology lives in config.yaml.
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" sh -s - agent
 
   # QEMU guest agent — required for qm agent and qm guest exec
   - systemctl enable qemu-guest-agent

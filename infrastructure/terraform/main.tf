@@ -70,6 +70,8 @@ resource "null_resource" "garage_bootstrap_guard" {
 }
 
 locals {
+  k3s_api_vip = var.k3s_api_vip
+
   # Strategic guardrail after the 2026-07-15 PVE hang RCA:
   # keep an explicit budget for the single-host control plane instead of
   # letting GitOps silently reserve all RAM and push the hypervisor into swap.
@@ -109,7 +111,7 @@ check "pve_host_memory_budget" {
   }
 }
 
-# ── K8s Master 2 (VM 500) — Primary server, other masters join here ──
+# ── K8s Master 2 (VM 500) — Bootstrap server for the HA API VIP ──
 
 module "k8s_master2" {
   source = "./modules/vm"
@@ -120,26 +122,29 @@ module "k8s_master2" {
   # Observed steady-state guest usage was ~2.1 GiB with >5 GiB available,
   # so 4 GiB preserves control-plane headroom without forcing the PVE host
   # into chronic swap pressure.
-  memory_mb         = 4096
-  cpu_cores         = 4
-  cpu_units         = 4096
-  os_disk_size_gb   = 80
-  data_disk_size_gb = 0
-  vm_storage        = "local-zfs"
-  data_storage      = "bulkpool"
-  bridge            = "vmbr0"
-  vm_os_type        = "l26"
-  vm_bios           = "ovmf"
-  vm_machine        = "q35"
-  tags              = ["k8s-master"]
-  os_version        = "24.04"
-  boot_order        = ["scsi0"]
-  network_mac       = "BC:24:11:99:2E:79"
-  static_ip         = "192.168.1.202"
-  k3s_token         = var.k3s_token
-  k3s_role          = "server"
-  k3s_join_server   = "192.168.1.201" # joins master1 (bootstrap primary)
-  vm_started        = true
+  memory_mb             = 4096
+  cpu_cores             = 4
+  cpu_units             = 4096
+  os_disk_size_gb       = 80
+  data_disk_size_gb     = 0
+  vm_storage            = "local-zfs"
+  data_storage          = "bulkpool"
+  bridge                = "vmbr0"
+  vm_os_type            = "l26"
+  vm_bios               = "ovmf"
+  vm_machine            = "q35"
+  tags                  = ["k8s-master"]
+  os_version            = "24.04"
+  boot_order            = ["scsi0"]
+  network_mac           = "BC:24:11:99:2E:79"
+  static_ip             = "192.168.1.202"
+  k3s_token             = var.k3s_token
+  k3s_role              = "server"
+  k3s_cluster_init      = true
+  k3s_api_vip           = local.k3s_api_vip
+  k3s_api_vip_interface = var.k3s_api_vip_interface
+  kube_vip_version      = var.kube_vip_version
+  vm_started            = true
 
   proxmox_host = "192.168.1.50"
   ssh_key_path = "/home/moltbot/.ssh/pve-kai"
@@ -164,7 +169,7 @@ module "k8s_master2" {
   protect_vm = true
 }
 
-# ── K8s Master 1 (VM 400) — Control plane, joins via master2 ──
+# ── K8s Master 1 (VM 400) — Control plane, joins through the HA API VIP ──
 
 module "k8s_master1" {
   source = "./modules/vm"
@@ -175,26 +180,29 @@ module "k8s_master1" {
   # Observed steady-state guest usage was ~2.7 GiB with ~5 GiB available,
   # so 4 GiB preserves control-plane headroom without forcing the PVE host
   # into chronic swap pressure.
-  memory_mb         = 4096
-  cpu_cores         = 4
-  cpu_units         = 4096
-  os_disk_size_gb   = 80
-  data_disk_size_gb = 0
-  vm_storage        = "local-zfs"
-  data_storage      = "bulkpool"
-  bridge            = "vmbr0"
-  vm_os_type        = "l26"
-  vm_bios           = "ovmf"
-  vm_machine        = "q35"
-  tags              = ["k8s-master"]
-  os_version        = "24.04"
-  boot_order        = ["scsi0"]
-  network_mac       = "BC:24:11:03:3C:33"
-  static_ip         = "192.168.1.201"
-  k3s_token         = var.k3s_token
-  k3s_role          = "server"
-  k3s_join_server   = "192.168.1.202"
-  vm_started        = true
+  memory_mb             = 4096
+  cpu_cores             = 4
+  cpu_units             = 4096
+  os_disk_size_gb       = 80
+  data_disk_size_gb     = 0
+  vm_storage            = "local-zfs"
+  data_storage          = "bulkpool"
+  bridge                = "vmbr0"
+  vm_os_type            = "l26"
+  vm_bios               = "ovmf"
+  vm_machine            = "q35"
+  tags                  = ["k8s-master"]
+  os_version            = "24.04"
+  boot_order            = ["scsi0"]
+  network_mac           = "BC:24:11:03:3C:33"
+  static_ip             = "192.168.1.201"
+  k3s_token             = var.k3s_token
+  k3s_role              = "server"
+  k3s_join_server       = local.k3s_api_vip
+  k3s_api_vip           = local.k3s_api_vip
+  k3s_api_vip_interface = var.k3s_api_vip_interface
+  kube_vip_version      = var.kube_vip_version
+  vm_started            = true
 
   proxmox_host = "192.168.1.50"
   ssh_key_path = "/home/moltbot/.ssh/pve-kai"
@@ -219,7 +227,7 @@ module "k8s_master1" {
   protect_vm = true
 }
 
-# ── K8s Master 3 (VM 600) — Control plane ──
+# ── K8s Master 3 (VM 600) — Control plane, joins through the HA API VIP ──
 
 module "k8s_master3" {
   source = "./modules/vm"
@@ -230,26 +238,29 @@ module "k8s_master3" {
   # Observed steady-state guest usage was ~2.0 GiB with ~5.7 GiB available,
   # so 4 GiB preserves control-plane headroom without forcing the PVE host
   # into chronic swap pressure.
-  memory_mb         = 4096
-  cpu_cores         = 4
-  cpu_units         = 4096
-  os_disk_size_gb   = 80
-  data_disk_size_gb = 0
-  vm_storage        = "local-zfs"
-  data_storage      = "bulkpool"
-  bridge            = "vmbr0"
-  vm_os_type        = "l26"
-  vm_bios           = "ovmf"
-  vm_machine        = "q35"
-  tags              = ["k8s-master"]
-  os_version        = "24.04"
-  boot_order        = ["scsi0"]
-  network_mac       = "BC:24:11:D6:6C:25"
-  static_ip         = "192.168.1.203"
-  k3s_token         = var.k3s_token
-  k3s_role          = "server"
-  k3s_join_server   = "192.168.1.201" # joins master1 (bootstrap primary)
-  vm_started        = true
+  memory_mb             = 4096
+  cpu_cores             = 4
+  cpu_units             = 4096
+  os_disk_size_gb       = 80
+  data_disk_size_gb     = 0
+  vm_storage            = "local-zfs"
+  data_storage          = "bulkpool"
+  bridge                = "vmbr0"
+  vm_os_type            = "l26"
+  vm_bios               = "ovmf"
+  vm_machine            = "q35"
+  tags                  = ["k8s-master"]
+  os_version            = "24.04"
+  boot_order            = ["scsi0"]
+  network_mac           = "BC:24:11:D6:6C:25"
+  static_ip             = "192.168.1.203"
+  k3s_token             = var.k3s_token
+  k3s_role              = "server"
+  k3s_join_server       = local.k3s_api_vip
+  k3s_api_vip           = local.k3s_api_vip
+  k3s_api_vip_interface = var.k3s_api_vip_interface
+  kube_vip_version      = var.kube_vip_version
+  vm_started            = true
 
   proxmox_host = "192.168.1.50"
   ssh_key_path = "/home/moltbot/.ssh/pve-kai"
@@ -305,7 +316,8 @@ module "k8s_worker1" {
   static_ip         = "192.168.1.204"
   k3s_token         = var.k3s_token
   k3s_role          = "agent"
-  k3s_join_server   = "192.168.1.202" # stable primary server endpoint for worker joins
+  k3s_join_server   = local.k3s_api_vip
+  k3s_api_vip       = local.k3s_api_vip
   vm_started        = true
 
   proxmox_host = "192.168.1.50"
@@ -321,8 +333,8 @@ module "k8s_worker1" {
   # The additional data disk is the intended replica disk; the node-taint-enforcer
   # reconciles the Longhorn node CR so the OS disk is not used as a second faux replica.
   node_labels = {
-    "node.longhorn.io/create-default-disk"              = "true"
-    "storage.k8s.workbench.io/longhorn-primary-disk"    = "longhorn-additional"
+    "node.longhorn.io/create-default-disk"           = "true"
+    "storage.k8s.workbench.io/longhorn-primary-disk" = "longhorn-additional"
   }
   post_create_node_labels = {
     "node.kubernetes.io/longhorn-storage" = "available"
@@ -360,7 +372,8 @@ module "k8s_worker2" {
   static_ip         = "192.168.1.205"
   k3s_token         = var.k3s_token
   k3s_role          = "agent"
-  k3s_join_server   = "192.168.1.202" # stable primary server endpoint for worker joins
+  k3s_join_server   = local.k3s_api_vip
+  k3s_api_vip       = local.k3s_api_vip
   vm_started        = true
 
   proxmox_host = "192.168.1.50"
@@ -376,8 +389,8 @@ module "k8s_worker2" {
   # The additional data disk is the intended replica disk; the node-taint-enforcer
   # reconciles the Longhorn node CR so the OS disk is not used as a second faux replica.
   node_labels = {
-    "node.longhorn.io/create-default-disk"              = "true"
-    "storage.k8s.workbench.io/longhorn-primary-disk"    = "longhorn-additional"
+    "node.longhorn.io/create-default-disk"           = "true"
+    "storage.k8s.workbench.io/longhorn-primary-disk" = "longhorn-additional"
   }
   post_create_node_labels = {
     "node.kubernetes.io/longhorn-storage" = "available"

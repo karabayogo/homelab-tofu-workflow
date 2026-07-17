@@ -49,7 +49,12 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
         k3s_token         = var.k3s_token
         static_ip         = var.static_ip
         k3s_join_server   = var.k3s_join_server
+        k3s_cluster_init  = var.k3s_cluster_init
+        k3s_api_vip       = var.k3s_api_vip
+        k3s_api_vip_interface = var.k3s_api_vip_interface
+        kube_vip_version  = var.kube_vip_version
         node_labels_args  = local.node_labels_args
+        node_labels_yaml  = local.node_labels_yaml
         data_disk_size_gb = var.data_disk_size_gb
         admin_user        = var.admin_user
         # Garage S3 variables (only consumed by cloud-init-garage.yaml.tftpl)
@@ -71,6 +76,7 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
 # ── Locals: Node label helpers ──
 locals {
   node_labels_args           = length(var.node_labels) > 0 ? join(" ", [for k, v in var.node_labels : " --node-label ${k}=${v}"]) : ""
+  node_labels_yaml           = length(var.node_labels) > 0 ? join("\n", [for k, v in var.node_labels : "  - ${k}=${v}"]) : ""
   post_create_label_commands = length(var.post_create_node_labels) > 0 ? join("\n      ", [for k, v in var.post_create_node_labels : "kubectl label node \"$node_name\" ${k}=${v} --overwrite"]) : ""
 }
 

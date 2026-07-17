@@ -208,6 +208,30 @@ variable "k3s_join_server" {
   default     = "192.168.1.202"
 }
 
+variable "k3s_cluster_init" {
+  description = "Whether this server bootstraps the k3s cluster with --cluster-init."
+  type        = bool
+  default     = false
+}
+
+variable "k3s_api_vip" {
+  description = "Stable HA Kubernetes API virtual IP address presented by kube-vip."
+  type        = string
+  default     = ""
+}
+
+variable "k3s_api_vip_interface" {
+  description = "Optional control-plane NIC override for the kube-vip API virtual IP."
+  type        = string
+  default     = ""
+}
+
+variable "kube_vip_version" {
+  description = "Pinned kube-vip image tag used for the HA API virtual IP."
+  type        = string
+  default     = "v1.2.1"
+}
+
 variable "vm_started" {
   description = "Whether the VM should be running. false for net-new VMs, true for imported."
   type        = bool

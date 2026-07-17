@@ -75,6 +75,24 @@ variable "k3s_token" {
   default = ""
 }
 
+variable "k3s_api_vip" {
+  description = "Stable HA Kubernetes API virtual IP address presented by kube-vip"
+  type        = string
+  default     = "192.168.1.206"
+}
+
+variable "k3s_api_vip_interface" {
+  description = "Optional control-plane NIC override for kube-vip API advertisement; leave empty to auto-detect"
+  type        = string
+  default     = ""
+}
+
+variable "kube_vip_version" {
+  description = "Pinned kube-vip image tag used for the HA API endpoint"
+  type        = string
+  default     = "v1.2.1"
+}
+
 # ── Vault AppRole bootstrap for Garage nodes ──
 
 variable "vault_addr" {
@@ -165,7 +183,7 @@ variable "pve_host_reserved_memory_mb" {
 }
 
 variable "pve_unmanaged_reserved_memory_mb" {
-  description = "RAM reserved for legacy/manual VMs that are still outside Terraform. Default covers VM 201 and VM 300 until they are onboarded as cattle."
+  description = "RAM reserved for legacy/manual VMs that are still outside Terraform. Default tracks the current VM 201 (14 GiB) + VM 300 (4 GiB) footprint until they are onboarded as cattle."
   type        = number
-  default     = 24576
+  default     = 18432
 }
