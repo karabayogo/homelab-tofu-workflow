@@ -458,7 +458,9 @@ module "backup_pbs1" {
   vm_machine        = "q35"
   tags              = ["backup", "pbs"]
   os_version        = "13"
-  static_ip         = "192.168.1.245"
+  # 2026-07-17 RCA: .245 had a live duplicate-IP conflict on the LAN.
+  # Move PBS to a collision-free address and keep the desired endpoint in Git.
+  static_ip         = "192.168.1.247"
   vm_started        = true
   onboot            = true
 
