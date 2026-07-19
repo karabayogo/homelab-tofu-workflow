@@ -271,16 +271,14 @@ module "k8s_master3" {
   tofu_deploy_key = ""
 
   # Longhorn node labels - declarative at IaC layer.
-  # Strategic exception: master3 is the explicit third Longhorn replica node until
-  # the homelab has a dedicated third worker/storage VM. This turns 3-replica volumes
-  # into a topologically feasible design again instead of forcing Longhorn to place
-  # multiple replicas on the same worker node.
+  # Strategic posture after the 2026-07-19 Longhorn/control-plane RCA:
+  # master3 is no longer a replica fallback. A third Longhorn replica requires
+  # a third dedicated worker/storage VM, not control-plane storage I/O.
   node_labels = {
-    "node.longhorn.io/create-default-disk"            = "true"
-    "node.kubernetes.io/longhorn-storage"             = "available"
-    "storage.k8s.workbench.io/allow-longhorn-replica" = "true"
+    "node.longhorn.io/evicted"             = "true"
+    "node.longhorn.io/create-default-disk" = "false"
   }
-  # No additional post-create labels. Node registration labels are the source of truth.
+  # No additional post-create Longhorn labels on protected control-plane nodes.
   post_create_node_labels = {}
 
   protect_vm = true
@@ -460,9 +458,9 @@ module "backup_pbs1" {
   os_version        = "13"
   # 2026-07-17 RCA: .245 had a live duplicate-IP conflict on the LAN.
   # Move PBS to a collision-free address and keep the desired endpoint in Git.
-  static_ip         = "192.168.1.247"
-  vm_started        = true
-  onboot            = true
+  static_ip  = "192.168.1.247"
+  vm_started = true
+  onboot     = true
 
   proxmox_host       = "192.168.1.50"
   ssh_key_path       = "/home/moltbot/.ssh/pve-kai"

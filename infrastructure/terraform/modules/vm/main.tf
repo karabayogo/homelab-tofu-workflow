@@ -42,21 +42,21 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
         : "${path.module}/templates/cloud-init-base.yaml.tftpl"
       ),
       {
-        hostname          = var.vm_name
-        ssh_pub_key       = var.ssh_pub_key
-        tofu_deploy_key   = var.tofu_deploy_key
-        k3s_version       = var.k3s_version
-        k3s_token         = var.k3s_token
-        static_ip         = var.static_ip
-        k3s_join_server   = var.k3s_join_server
-        k3s_cluster_init  = var.k3s_cluster_init
-        k3s_api_vip       = var.k3s_api_vip
+        hostname              = var.vm_name
+        ssh_pub_key           = var.ssh_pub_key
+        tofu_deploy_key       = var.tofu_deploy_key
+        k3s_version           = var.k3s_version
+        k3s_token             = var.k3s_token
+        static_ip             = var.static_ip
+        k3s_join_server       = var.k3s_join_server
+        k3s_cluster_init      = var.k3s_cluster_init
+        k3s_api_vip           = var.k3s_api_vip
         k3s_api_vip_interface = var.k3s_api_vip_interface
-        kube_vip_version  = var.kube_vip_version
-        node_labels_args  = local.node_labels_args
-        node_labels_yaml  = local.node_labels_yaml
-        data_disk_size_gb = var.data_disk_size_gb
-        admin_user        = var.admin_user
+        kube_vip_version      = var.kube_vip_version
+        node_labels_args      = local.node_labels_args
+        node_labels_yaml      = local.node_labels_yaml
+        data_disk_size_gb     = var.data_disk_size_gb
+        admin_user            = var.admin_user
         # Garage S3 variables (only consumed by cloud-init-garage.yaml.tftpl)
         garage_version          = var.garage_version
         rpc_secret              = var.rpc_secret
