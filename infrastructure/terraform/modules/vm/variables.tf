@@ -56,10 +56,22 @@ variable "os_disk_size_gb" {
   default     = 32
 }
 
+variable "os_disk_ssd" {
+  description = "Present the OS disk as SSD-backed to Proxmox/QEMU guests. local-zfs is NVMe-backed in this homelab."
+  type        = bool
+  default     = true
+}
+
 variable "data_disk_size_gb" {
   description = "Extra data disk size in GB (0 = no extra disk)"
   type        = number
   default     = 0
+}
+
+variable "data_disk_ssd" {
+  description = "Present the extra data disk as SSD-backed. bulkpool is SATA SSD-backed in this homelab."
+  type        = bool
+  default     = true
 }
 
 variable "network_mac" {

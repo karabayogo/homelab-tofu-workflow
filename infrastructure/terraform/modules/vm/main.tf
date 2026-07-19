@@ -116,6 +116,7 @@ resource "proxmox_virtual_environment_vm" "this" {
     size         = var.os_disk_size_gb
     discard      = "on"
     iothread     = var.vm_machine == "q35" ? true : false
+    ssd          = var.os_disk_ssd
   }
 
   dynamic "disk" {
@@ -124,6 +125,9 @@ resource "proxmox_virtual_environment_vm" "this" {
       datastore_id = var.data_storage
       interface    = "scsi1"
       size         = var.data_disk_size_gb
+      discard      = "on"
+      iothread     = var.vm_machine == "q35" ? true : false
+      ssd          = var.data_disk_ssd
     }
   }
 
