@@ -594,11 +594,14 @@ module "garage_n1" {
   vm_id   = 901
   vm_name = "garage-n1"
   # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
+  # Disk expanded 200G -> 400G on 2026-07-20 after Garage nodes 901/902 ran out
+  # of space (196G/196G = 100%), causing Longhorn S3 backup writes to fail
+  # with "No space left on device" and breaking the daily RecurringJob.
   memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
-  data_disk_size_gb = 200
+  data_disk_size_gb = 400
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
   bridge            = "vmbr0"
@@ -651,11 +654,12 @@ module "garage_n2" {
   vm_id   = 902
   vm_name = "garage-n2"
   # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
+  # Disk expanded 200G -> 400G on 2026-07-20 (see garage-n1 comment).
   memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
-  data_disk_size_gb = 200
+  data_disk_size_gb = 400
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
   bridge            = "vmbr0"
@@ -696,11 +700,12 @@ module "garage_n3" {
   vm_id   = 903
   vm_name = "garage-n3"
   # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
+  # Disk expanded 200G -> 400G on 2026-07-20 (see garage-n1 comment).
   memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
-  data_disk_size_gb = 200
+  data_disk_size_gb = 400
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
   bridge            = "vmbr0"
