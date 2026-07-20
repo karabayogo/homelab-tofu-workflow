@@ -703,13 +703,13 @@ module "garage_n3" {
   vm_id   = 903
   vm_name = "garage-n3"
   # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
-  # Kept at 200G on 2026-07-20 — node 903 only has 27G used, no expansion needed.
-  # Bulkpool has limited free space; priority given to the full nodes 901/902.
+  # Disk expanded to 230G on 2026-07-20 — manually resized on PVE then
+  # reconciled via tofu. Kept proportional with the other garage nodes.
   memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
-  data_disk_size_gb = 200
+  data_disk_size_gb = 230
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
   bridge            = "vmbr0"
