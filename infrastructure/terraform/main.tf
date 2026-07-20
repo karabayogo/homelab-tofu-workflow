@@ -594,14 +594,16 @@ module "garage_n1" {
   vm_id   = 901
   vm_name = "garage-n1"
   # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
-  # Disk expanded 200G -> 400G on 2026-07-20 after Garage nodes 901/902 ran out
+  # Disk expanded 200G -> 230G on 2026-07-20 after Garage node 901 ran out
   # of space (196G/196G = 100%), causing Longhorn S3 backup writes to fail
   # with "No space left on device" and breaking the daily RecurringJob.
+  # Bulkpool has limited free space (61.7G); 230G is the max we can afford
+  # without shrinking other VMs (backup-pbs1=500G, k8s-worker1=150G).
   memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
-  data_disk_size_gb = 400
+  data_disk_size_gb = 230
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
   bridge            = "vmbr0"
@@ -655,6 +657,7 @@ module "garage_n2" {
   vm_name = "garage-n2"
   # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
   # Disk expanded 200G -> 400G on 2026-07-20 (see garage-n1 comment).
+  # Node 902 was the first to be expanded and already has 400G allocated.
   memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
@@ -700,12 +703,13 @@ module "garage_n3" {
   vm_id   = 903
   vm_name = "garage-n3"
   # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
-  # Disk expanded 200G -> 400G on 2026-07-20 (see garage-n1 comment).
+  # Kept at 200G on 2026-07-20 — node 903 only has 27G used, no expansion needed.
+  # Bulkpool has limited free space; priority given to the full nodes 901/902.
   memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
-  data_disk_size_gb = 400
+  data_disk_size_gb = 200
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
   bridge            = "vmbr0"
