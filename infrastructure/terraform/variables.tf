@@ -187,3 +187,9 @@ variable "pve_unmanaged_reserved_memory_mb" {
   type        = number
   default     = 18432
 }
+
+variable "pve_memory_headroom_mb" {
+  description = "Minimum unallocated RAM that must remain free on the PVE host after all VM reservations. Prevents 100% memory allocation which causes host swap pressure, ZFS I/O stalls, and guest soft lockups. 2026-07-21 RCA: host at 100% budget → 7 GiB swap → 108s ZFS delay → master1 soft lockup panic."
+  type        = number
+  default     = 3072
+}

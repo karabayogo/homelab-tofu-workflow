@@ -76,6 +76,12 @@ locals {
   # keep an explicit budget for the single-host control plane instead of
   # letting GitOps silently reserve all RAM and push the hypervisor into swap.
   #
+  # 2026-07-21 RCA: the budget was at 100% (63488/63488) because it only
+  # counted garage/migration VMs when start_*_nodes=true. But the VMs were
+  # provisioned (enable_*=true) and running, consuming 6 GiB the budget
+  # didn't see. Now we count ALL provisioned VMs (enable_*) plus a mandatory
+  # headroom (pve_memory_headroom_mb) so CI fails before host overcommit.
+  #
   # VM 201 and VM 300 are still legacy/manual today, so they are accounted for
   # via var.pve_unmanaged_reserved_memory_mb until they are onboarded as cattle.
   pve_managed_running_vm_memory_mb = (
@@ -84,13 +90,15 @@ locals {
     4096 + # k8s-master3
     6144 + # k8s-worker1
     6144 + # k8s-worker2
-    3072 + # openclaw
-    4096 + # backup-pbs1
+    2048 + # openclaw (reduced 3→2 GiB, 2026-07-21 RCA)
+    2048 + # backup-pbs1 (reduced 4→2 GiB, 2026-07-21 RCA)
     1024 + # tofu-state1
-    (var.start_migration_helper ? 2048 : 0) +
-    (var.start_garage_nodes ? 2048 : 0) +
-    (var.start_garage_nodes ? 2048 : 0) +
-    (var.start_garage_nodes ? 2048 : 0)
+    # Count provisioned VMs, not just "should be started" — they can be
+    # started at any time and the host must handle the memory.
+    (var.enable_migration_helper ? 2048 : 0) +
+    (var.enable_garage_cluster ? 2048 : 0) +
+    (var.enable_garage_cluster ? 2048 : 0) +
+    (var.enable_garage_cluster ? 2048 : 0)
   )
 }
 
@@ -99,13 +107,16 @@ check "pve_host_memory_budget" {
     condition = (
       local.pve_managed_running_vm_memory_mb +
       var.pve_unmanaged_reserved_memory_mb +
-      var.pve_host_reserved_memory_mb
+      var.pve_host_reserved_memory_mb +
+      var.pve_memory_headroom_mb
     ) <= var.pve_host_total_memory_mb
     error_message = format(
-      "PVE RAM budget exceeded: managed=%d MiB unmanaged=%d MiB host-reserve=%d MiB total=%d MiB. Reduce VM memory, start fewer optional VMs, or onboard/right-size legacy VMs before applying.",
+      "PVE RAM budget exceeded (including %d MiB required headroom): managed=%d MiB unmanaged=%d MiB host-reserve=%d MiB headroom=%d MiB total=%d MiB. Reduce VM memory, start fewer optional VMs, or onboard/right-size legacy VMs before applying.",
+      var.pve_memory_headroom_mb,
       local.pve_managed_running_vm_memory_mb,
       var.pve_unmanaged_reserved_memory_mb,
       var.pve_host_reserved_memory_mb,
+      var.pve_memory_headroom_mb,
       var.pve_host_total_memory_mb,
     )
   }
@@ -402,10 +413,12 @@ module "openclaw" {
 
   vm_id   = 252
   vm_name = "openclaw"
-  # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
-  # Observed guest usage stayed well below 2 GiB, so 3 GiB keeps
-  # operational headroom without reserving a full 4 GiB on the host.
-  memory_mb         = 3072
+  # Right-sized after the 2026-07-21 PVE host-memory RCA.
+  # Observed steady-state guest usage was ~1.2 GiB with 1.7 GiB available
+  # at 3 GiB. Reduced from 3 GiB to 2 GiB to free 1 GiB of PVE host
+  # headroom. OpenClaw is a lightweight API gateway, not a data-plane
+  # workload — 2 GiB leaves ~0.8 GiB headroom above observed usage.
+  memory_mb         = 2048
   cpu_cores         = 2
   os_disk_size_gb   = 32
   data_disk_size_gb = 50
@@ -443,7 +456,13 @@ module "backup_pbs1" {
 
   vm_id             = 905
   vm_name           = "backup-pbs1"
-  memory_mb         = 4096
+  # Right-sized after the 2026-07-21 PVE host-memory RCA.
+  # Observed steady-state guest usage was ~450 MiB with 3.45 GiB available
+  # at 4 GiB. PBS is idle most of the time (only active during backup
+  # windows). Reduced from 4 GiB to 2 GiB to free 2 GiB of PVE host
+  # headroom. 2 GiB leaves ~1.5 GiB above observed usage, sufficient
+  # for backup window spikes.
+  memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 2048
   os_disk_size_gb   = 32
