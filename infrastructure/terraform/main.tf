@@ -613,16 +613,16 @@ module "garage_n1" {
   vm_id   = 901
   vm_name = "garage-n1"
   # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
-  # Disk expanded 200G -> 230G on 2026-07-20 after Garage node 901 ran out
-  # of space (196G/196G = 100%), causing Longhorn S3 backup writes to fail
-  # with "No space left on device" and breaking the daily RecurringJob.
-  # Bulkpool has limited free space (61.7G); 230G is the max we can afford
-  # without shrinking other VMs (backup-pbs1=500G, k8s-worker1=150G).
+  # Strategic capacity bump (2026-07-28 RCA): n1 and n3 must match n2 at 400G.
+  # The previous 230/400/230 split left Garage's effective usable capacity pinned
+  # to the smallest nodes and let Longhorn backups age out once n1 hit 100%.
+  # With all 3 data nodes at 400G, Garage can rebalance evenly and Longhorn S3
+  # backups regain durable headroom without pet cleanups.
   memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
-  data_disk_size_gb = 230
+  data_disk_size_gb = 400
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
   bridge            = "vmbr0"
@@ -722,13 +722,14 @@ module "garage_n3" {
   vm_id   = 903
   vm_name = "garage-n3"
   # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
-  # Disk expanded to 230G on 2026-07-20 — manually resized on PVE then
-  # reconciled via tofu. Kept proportional with the other garage nodes.
+  # Strategic capacity bump (2026-07-28 RCA): keep n3 at parity with n1/n2 so
+  # Garage usable capacity is not pinned to the smallest node. The earlier
+  # 230/400/230 split left Longhorn backups effectively capped by n1/n3.
   memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
-  data_disk_size_gb = 230
+  data_disk_size_gb = 400
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
   bridge            = "vmbr0"
