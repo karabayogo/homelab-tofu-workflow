@@ -10,7 +10,7 @@
 module "garage_s3" {
   source = "./modules/garage-s3"
 
-  admin_endpoint     = "http://192.168.1.241:3900"
+  admin_endpoint     = "http://192.168.1.242:3900"
   admin_key_id       = var.garage_access_key
   admin_secret_key   = var.garage_secret_key
   bucket_name        = "terraform-state"
