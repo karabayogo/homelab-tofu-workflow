@@ -69,6 +69,20 @@ resource "null_resource" "garage_bootstrap_guard" {
   }
 }
 
+# Strategic PVE storage contract (2026-07-28 RCA): bulkpool must be thin
+# provisioned. Thick-provisioned ZFS zvols (`refreservation=<volsize>`) made
+# PVE report only ~74 MiB free even while `zpool list` still had >1 TiB free,
+# which blocked Garage disk expansion and let Longhorn backups age out. Manage
+# the storage definition declaratively so future disks inherit sparse zvols.
+resource "proxmox_storage_zfspool" "bulkpool" {
+  id    = "bulkpool"
+  nodes = ["pve"]
+
+  zfs_pool       = "bulkpool"
+  content        = ["images", "rootdir"]
+  thin_provision = true
+}
+
 locals {
   k3s_api_vip = var.k3s_api_vip
 
@@ -454,8 +468,8 @@ module "openclaw" {
 module "backup_pbs1" {
   source = "./modules/vm"
 
-  vm_id             = 905
-  vm_name           = "backup-pbs1"
+  vm_id   = 905
+  vm_name = "backup-pbs1"
   # Right-sized after the 2026-07-21 PVE host-memory RCA.
   # Observed steady-state guest usage was ~450 MiB with 3.45 GiB available
   # at 4 GiB. PBS is idle most of the time (only active during backup

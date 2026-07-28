@@ -8,6 +8,11 @@
 # ============================================================
 
 import {
+  to = proxmox_storage_zfspool.bulkpool
+  id = "bulkpool"
+}
+
+import {
   to = module.k8s_master1.proxmox_virtual_environment_vm.this[0]
   id = "400"
 }
