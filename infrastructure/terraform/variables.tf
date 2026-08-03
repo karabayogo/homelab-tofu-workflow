@@ -183,13 +183,13 @@ variable "pve_host_reserved_memory_mb" {
 }
 
 variable "pve_unmanaged_reserved_memory_mb" {
-  description = "RAM reserved for legacy/manual VMs that are still outside Terraform. Default tracks the current VM 201 (14 GiB) + VM 300 (4 GiB) footprint until they are onboarded as cattle."
+  description = "RAM reserved for legacy/manual VMs that are still outside Terraform. Default tracks the budgeted VM 201 (12 GiB) + VM 300 (3 GiB) footprint until they are onboarded as cattle."
   type        = number
-  default     = 18432
+  default     = 15360
 }
 
 variable "pve_memory_headroom_mb" {
-  description = "Minimum unallocated RAM that must remain free on the PVE host after all VM reservations. Prevents 100% memory allocation which causes host swap pressure, ZFS I/O stalls, and guest soft lockups. 2026-07-21 RCA: host at 100% budget → 7 GiB swap → 108s ZFS delay → master1 soft lockup panic."
+  description = "Minimum unallocated RAM that must remain free on the PVE host after all VM reservations. Prevents chronic swap pressure on the single-host hypervisor. 2026-07-21 RCA: host at 100% budget → 7 GiB swap → 108s ZFS delay → master1 soft lockup panic. 2026-08-03 RCA: even ~2-3 GiB free plus ~3.2 GiB swap was enough to stall Proxmox, so the floor was raised to 6 GiB."
   type        = number
-  default     = 3072
+  default     = 6144
 }

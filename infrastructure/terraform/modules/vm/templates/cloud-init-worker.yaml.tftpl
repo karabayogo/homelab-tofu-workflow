@@ -28,6 +28,17 @@ write_files:
       net.bridge.bridge-nf-call-iptables = 1
       net.bridge.bridge-nf-call-ip6tables = 1
       net.ipv4.ip_forward = 1
+
+  - path: /etc/rancher/k3s/config.yaml
+    permissions: '0644'
+    content: |
+      server: "https://${k3s_join_server}:6443"
+      token: "${k3s_token}"
+      node-ip: "${static_ip}"
+%{ if node_labels_yaml != "" ~}
+      node-label:
+${indent(6, node_labels_yaml)}
+%{ endif ~}
   %{ if data_disk_size_gb > 0 ~}
   - path: /opt/longhorn-setup.sh
     permissions: "0755"
@@ -120,18 +131,8 @@ runcmd:
   - ['/opt/longhorn-setup.sh']
   %{ endif ~}
 
-  # Render declarative k3s agent config before the service starts.
+  # Write files above create the k3s agent config before the service starts.
   - mkdir -p /etc/rancher/k3s
-  - |
-    cat > /etc/rancher/k3s/config.yaml <<'EOF'
-    server: "https://${k3s_join_server}:6443"
-    token: "${k3s_token}"
-    node-ip: "${static_ip}"
-%{ if node_labels_yaml != "" ~}
-    node-label:
-${node_labels_yaml}
-%{ endif ~}
-    EOF
 
   # Install k3s agent. Cluster topology lives in config.yaml.
   - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" sh -s - agent

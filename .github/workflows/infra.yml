@@ -12,7 +12,34 @@ on:
     - cron: "0 23 * * *"
 
 jobs:
+  cloud-init-template-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            infrastructure/terraform/modules/vm/templates
+          sparse-checkout-cone-mode: false
+
+      - name: Enforce write_files-based k3s cloud-init templates
+        run: |
+          set -euo pipefail
+          MASTER=infrastructure/terraform/modules/vm/templates/cloud-init-master.yaml.tftpl
+          WORKER=infrastructure/terraform/modules/vm/templates/cloud-init-worker.yaml.tftpl
+
+          grep -q "path: /etc/rancher/k3s/config.yaml" "$MASTER"
+          grep -q "path: /etc/rancher/k3s/config.yaml" "$WORKER"
+          grep -q "path: /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml" "$MASTER"
+          grep -q "path: /var/lib/rancher/k3s/server/manifests/kube-vip.yaml" "$MASTER"
+
+          if grep -R -n "cat > /etc/rancher/k3s/config.yaml <<'EOF'\|cat > /var/lib/rancher/k3s/server/manifests/kube-vip" infrastructure/terraform/modules/vm/templates; then
+            echo "::error::k3s cloud-init templates must not render shell heredocs for k3s/kube-vip files; use write_files instead"
+            exit 1
+          fi
+
   tofu:
+    needs: cloud-init-template-contract
     uses: ./.github/workflows/tofu.yml
     with:
       runner_labels: '["self-hosted", "LAN", "moltbot"]'
