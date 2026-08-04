@@ -427,14 +427,16 @@ module "openclaw" {
 
   vm_id   = 252
   vm_name = "openclaw"
-  # Right-sized after the 2026-07-21 PVE host-memory RCA.
-  # Observed steady-state guest usage was ~1.2 GiB with 1.7 GiB available
-  # at 3 GiB. Reduced from 3 GiB to 2 GiB to free 1 GiB of PVE host
-  # headroom. OpenClaw is a lightweight API gateway, not a data-plane
-  # workload — 2 GiB leaves ~0.8 GiB headroom above observed usage.
+  # 2026-08-04 disk-capacity RCA: 32 GiB OS disk was too small for the
+  # combined OpenClaw toolchain footprint (`/var/lib/containerd` + Docker +
+  # VS Code server caches + linuxbrew/home state). The watchdog showed 94%
+  # rootfs usage even after safe journal cleanup, which means capacity — not
+  # just cache drift — became the limiting factor. Keep RAM right-sized at
+  # 2 GiB, but raise the OS disk so the management-plane/runtime caches stop
+  # sharing the same tiny failure domain.
   memory_mb         = 2048
   cpu_cores         = 2
-  os_disk_size_gb   = 32
+  os_disk_size_gb   = 64
   data_disk_size_gb = 50
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
