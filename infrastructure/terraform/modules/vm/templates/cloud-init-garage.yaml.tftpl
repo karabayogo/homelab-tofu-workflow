@@ -66,8 +66,8 @@ write_files:
 
       disk_bytes=$(blockdev --getsize64 "$DISK")
       fs_bytes=$(dumpe2fs -h "$DISK" 2>/dev/null | awk '/Block count:/ {blocks=$3} /Block size:/ {size=$3} END { if (blocks && size) print blocks * size; else print 0 }')
-      if [ "${fs_bytes:-0}" -gt 0 ] && [ "$disk_bytes" -gt "$fs_bytes" ]; then
-        echo "Growing ext4 filesystem on $DISK from ${fs_bytes} bytes to ${disk_bytes} bytes"
+      if [ "$${fs_bytes:-0}" -gt 0 ] && [ "$disk_bytes" -gt "$fs_bytes" ]; then
+        echo "Growing ext4 filesystem on $DISK from $${fs_bytes} bytes to $${disk_bytes} bytes"
         resize2fs "$DISK"
       fi
 
