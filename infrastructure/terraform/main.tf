@@ -627,16 +627,16 @@ module "garage_n1" {
   vm_id   = 901
   vm_name = "garage-n1"
   # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
-  # Strategic capacity bump (2026-07-28 RCA): n1 and n3 must match n2 at 400G.
-  # The previous 230/400/230 split left Garage's effective usable capacity pinned
-  # to the smallest nodes and let Longhorn backups age out once n1 hit 100%.
-  # With all 3 data nodes at 400G, Garage can rebalance evenly and Longhorn S3
-  # backups regain durable headroom without pet cleanups.
+  # Strategic capacity bump (2026-08-04 RCA): Loki + Longhorn share Garage, and
+  # unbounded Loki object growth exhausted n1/n2 again even after the 400G July
+  # expansion. Move all three nodes to 600G so the cluster has durable headroom
+  # while GitOps retention deletes old Loki chunks and while historical data
+  # placement gradually evens out.
   memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
-  data_disk_size_gb = 400
+  data_disk_size_gb = 600
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
   bridge            = "vmbr0"
@@ -688,14 +688,14 @@ module "garage_n2" {
 
   vm_id   = 902
   vm_name = "garage-n2"
-  # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
-  # Disk expanded 200G -> 400G on 2026-07-20 (see garage-n1 comment).
-  # Node 902 was the first to be expanded and already has 400G allocated.
+  # Strategic capacity bump (2026-08-04 RCA): keep n2 at parity with n1/n3 and
+  # raise the shared Garage floor to 600G so RF=3 writes keep headroom during
+  # retention-compaction lag and historical-placement skew.
   memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
-  data_disk_size_gb = 400
+  data_disk_size_gb = 600
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
   bridge            = "vmbr0"
@@ -736,14 +736,13 @@ module "garage_n3" {
   vm_id   = 903
   vm_name = "garage-n3"
   # Right-sized after the 2026-07-15 PVE memory-pressure RCA.
-  # Strategic capacity bump (2026-07-28 RCA): keep n3 at parity with n1/n2 so
-  # Garage usable capacity is not pinned to the smallest node. The earlier
-  # 230/400/230 split left Longhorn backups effectively capped by n1/n3.
+  # Strategic capacity bump (2026-08-04 RCA): keep n3 at parity with n1/n2 at
+  # 600G so new writes are not capacity-pinned while old data ages out.
   memory_mb         = 2048
   cpu_cores         = 2
   cpu_units         = 1024
   os_disk_size_gb   = 64
-  data_disk_size_gb = 400
+  data_disk_size_gb = 600
   vm_storage        = "local-zfs"
   data_storage      = "bulkpool"
   bridge            = "vmbr0"

@@ -64,6 +64,13 @@ write_files:
         mount "$DISK" "$MOUNT_POINT"
       fi
 
+      disk_bytes=$(blockdev --getsize64 "$DISK")
+      fs_bytes=$(dumpe2fs -h "$DISK" 2>/dev/null | awk '/Block count:/ {blocks=$3} /Block size:/ {size=$3} END { if (blocks && size) print blocks * size; else print 0 }')
+      if [ "${fs_bytes:-0}" -gt 0 ] && [ "$disk_bytes" -gt "$fs_bytes" ]; then
+        echo "Growing ext4 filesystem on $DISK from ${fs_bytes} bytes to ${disk_bytes} bytes"
+        resize2fs "$DISK"
+      fi
+
       if ! awk '$2 == "/var/lib/garage" { found=1 } END { exit found ? 0 : 1 }' /etc/fstab; then
         echo "$DISK $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
       fi
