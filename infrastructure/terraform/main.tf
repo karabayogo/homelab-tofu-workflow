@@ -84,7 +84,11 @@ resource "proxmox_storage_zfspool" "bulkpool" {
 }
 
 locals {
-  k3s_api_vip = var.k3s_api_vip
+  k3s_api_vip        = var.k3s_api_vip
+  legacy_vm_contract = jsondecode(file("${path.module}/legacy-vm-contracts.json"))
+  legacy_vm_reserved_memory_mb = sum([
+    for vm in values(local.legacy_vm_contract.vms) : tonumber(vm.memory_mb)
+  ])
 
   # Strategic guardrail after the 2026-07-15 PVE hang RCA:
   # keep an explicit budget for the single-host control plane instead of
@@ -97,7 +101,7 @@ locals {
   # headroom (pve_memory_headroom_mb) so CI fails before host overcommit.
   #
   # VM 201 and VM 300 are still legacy/manual today, so they are accounted for
-  # via var.pve_unmanaged_reserved_memory_mb until they are onboarded as cattle.
+  # via legacy-vm-contracts.json until they are onboarded as full Terraform cattle.
   pve_managed_running_vm_memory_mb = (
     4096 + # k8s-master2
     4096 + # k8s-master1
@@ -120,7 +124,7 @@ check "pve_host_memory_budget" {
   assert {
     condition = (
       local.pve_managed_running_vm_memory_mb +
-      var.pve_unmanaged_reserved_memory_mb +
+      local.legacy_vm_reserved_memory_mb +
       var.pve_host_reserved_memory_mb +
       var.pve_memory_headroom_mb
     ) <= var.pve_host_total_memory_mb
@@ -128,7 +132,7 @@ check "pve_host_memory_budget" {
       "PVE RAM budget exceeded (including %d MiB required headroom): managed=%d MiB unmanaged=%d MiB host-reserve=%d MiB headroom=%d MiB total=%d MiB. Reduce VM memory, start fewer optional VMs, or onboard/right-size legacy VMs before applying.",
       var.pve_memory_headroom_mb,
       local.pve_managed_running_vm_memory_mb,
-      var.pve_unmanaged_reserved_memory_mb,
+      local.legacy_vm_reserved_memory_mb,
       var.pve_host_reserved_memory_mb,
       var.pve_memory_headroom_mb,
       var.pve_host_total_memory_mb,

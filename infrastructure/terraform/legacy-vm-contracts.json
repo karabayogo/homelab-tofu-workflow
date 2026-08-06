@@ -1,0 +1,16 @@
+{
+  "vms": {
+    "201": {
+      "name": "moltbot-ubuntu-server-lts",
+      "memory_mb": 12288,
+      "allow_automated_reboot": false,
+      "reason": "Hosts Hermes/OpenClaw plus the self-hosted runners. Config drift can be repaired automatically, but memory shrink still requires a coordinated reboot of the active automation VM."
+    },
+    "300": {
+      "name": "home-assistant-os",
+      "memory_mb": 3072,
+      "allow_automated_reboot": true,
+      "reason": "Standalone appliance VM. Safe to reboot automatically after Proxmox config drift repair so runtime maxmem matches the declarative contract."
+    }
+  }
+}
