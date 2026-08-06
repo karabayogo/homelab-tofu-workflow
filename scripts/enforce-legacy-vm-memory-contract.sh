@@ -9,7 +9,7 @@ PVE_USER="${PVE_USER:-root}"
 PVE_TARGET="${PVE_USER}@${PVE_HOST}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-CONTRACT_JSON="${CONTRACT_JSON:-$REPO_ROOT/infrastructure/terraform/legacy-vm-contracts.json}"
+CONTRACT_JSON="${CONTRACT_JSON:-$REPO_ROOT/infrastructure/contracts/legacy-vm-contracts.json}"
 
 case "$MODE" in
   --check|--enforce) ;;

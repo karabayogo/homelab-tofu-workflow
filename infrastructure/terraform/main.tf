@@ -85,7 +85,7 @@ resource "proxmox_storage_zfspool" "bulkpool" {
 
 locals {
   k3s_api_vip        = var.k3s_api_vip
-  legacy_vm_contract = jsondecode(file("${path.module}/legacy-vm-contracts.json"))
+  legacy_vm_contract = jsondecode(file("${path.root}/../contracts/legacy-vm-contracts.json"))
   legacy_vm_reserved_memory_mb = sum([
     for vm in values(local.legacy_vm_contract.vms) : tonumber(vm.memory_mb)
   ])
