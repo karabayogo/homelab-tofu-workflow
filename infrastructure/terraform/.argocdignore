@@ -1,0 +1,3 @@
+# Non-Kubernetes contract data used by enforcement scripts.
+# ArgoCD must ignore this file when comparing the Terraform directory.
+legacy-vm-contracts.json
