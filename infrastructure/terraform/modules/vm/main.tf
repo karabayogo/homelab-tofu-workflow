@@ -194,6 +194,37 @@ resource "proxmox_virtual_environment_vm" "this" {
   }
 }
 
+# ── Post-apply storage reconcile: clear stale thick reservations on bulkpool ──
+# 2026-08-07 RCA: the bulkpool storage definition was already declared
+# thin_provision=true, but older/imported worker data zvols still carried
+# refreservation=<volsize>. That let Proxmox report the pool as out of space
+# and paused k8s-worker1 with QEMU I/O status "nospace", which in turn blocked
+# Longhorn from reattaching Prometheus away from a failed worker2 disk.
+#
+# Proxmox's storage setting fixes NEW zvols only; it does not reliably
+# reconcile existing imported zvol properties. Enforce the managed data-disk
+# contract here so every VM module with a bulkpool data disk converges to
+# refreservation=none on apply.
+resource "null_resource" "bulkpool_sparse_reconcile" {
+  count = var.data_disk_size_gb > 0 && var.data_storage == "bulkpool" ? 1 : 0
+
+  triggers = {
+    vm_id        = tostring(var.vm_id)
+    proxmox_host = var.proxmox_host
+    ssh_key_path = var.ssh_key_path
+    zvol         = "${var.data_storage}/vm-${var.vm_id}-disk-0"
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      ssh -o BatchMode=yes -o ConnectTimeout=10 -i "${self.triggers.ssh_key_path}" "root@${self.triggers.proxmox_host}" \
+        "zfs set refreservation=none '${self.triggers.zvol}' && zfs get -H -o value refreservation '${self.triggers.zvol}' | grep -qx 'none'"
+    EOT
+  }
+
+  depends_on = [proxmox_virtual_environment_vm.this]
+}
+
 # ── Post-create hook: Label k8s worker nodes ──
 # REMOVED: This provisioner runs on the TOFU HOST (not inside the VM).
 # Since the tofu host is outside the k8s cluster network, it cannot reach
