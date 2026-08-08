@@ -303,12 +303,12 @@ restart_and_verify_node() {
   local name="$3"
 
   # Primary: direct SSH
-  if vm_ssh_exec "$ip" 'set -euo pipefail; systemctl daemon-reload; systemctl restart garage; for i in $(seq 1 30); do if systemctl is-active --quiet garage; then exit 0; fi; sleep 1; done; systemctl status garage --no-pager -l || true; exit 1' 2>/dev/null; then
+  if vm_ssh_exec "$ip" 'set -euo pipefail; systemctl daemon-reload; systemctl enable --now garage-service-health.timer; systemctl restart garage; systemctl is-active --quiet garage-service-health.timer; for i in $(seq 1 30); do if systemctl is-active --quiet garage; then exit 0; fi; sleep 1; done; systemctl status garage --no-pager -l || true; systemctl status garage-service-health.timer --no-pager -l || true; exit 1' 2>/dev/null; then
     : # restart succeeded via SSH
   else
     # Fallback: qm guest exec via PVE
     local json
-    json=$(qm_exec_json "$vmid" 0 180 /bin/bash -lc 'set -euo pipefail; systemctl daemon-reload; systemctl restart garage; for i in $(seq 1 30); do if systemctl is-active --quiet garage; then exit 0; fi; sleep 1; done; systemctl status garage --no-pager -l || true; exit 1' 2>/dev/null || echo '{}')
+    json=$(qm_exec_json "$vmid" 0 180 /bin/bash -lc 'set -euo pipefail; systemctl daemon-reload; systemctl enable --now garage-service-health.timer; systemctl restart garage; systemctl is-active --quiet garage-service-health.timer; for i in $(seq 1 30); do if systemctl is-active --quiet garage; then exit 0; fi; sleep 1; done; systemctl status garage --no-pager -l || true; systemctl status garage-service-health.timer --no-pager -l || true; exit 1' 2>/dev/null || echo '{}')
     local code
     code=$(qm_exitcode "$json")
     if [ "$code" != "0" ]; then
