@@ -109,7 +109,10 @@ main_tf = maintf_path.read_text().splitlines()
 wanted_modules = {"garage_n1", "garage_n2", "garage_n3"}
 target_paths = {
     "/opt/garage-fetch-secrets.sh",
+    "/opt/garage-service-health.sh",
     "/etc/systemd/system/garage.service",
+    "/etc/systemd/system/garage-service-health.service",
+    "/etc/systemd/system/garage-service-health.timer",
     "/etc/garage.toml",
 }
 

@@ -269,15 +269,73 @@ write_files:
       [Install]
       WantedBy=multi-user.target
 
+  - path: /opt/garage-service-health.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      if systemctl is-active --quiet garage; then
+        echo "garage already active"
+        exit 0
+      fi
+
+      if ! find /var/lib/garage/meta -mindepth 1 -type f -print -quit 2>/dev/null | grep -q .; then
+        echo "garage metadata not initialized yet; skipping auto-start"
+        exit 0
+      fi
+
+      echo "garage inactive but metadata exists; attempting recovery start"
+      systemctl start garage
+
+      if systemctl is-active --quiet garage; then
+        echo "garage recovery start succeeded"
+        exit 0
+      fi
+
+      journalctl -u garage --no-pager -n 40 || true
+      echo "garage recovery start failed"
+      exit 1
+
+  - path: /etc/systemd/system/garage-service-health.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Garage service health reconciler
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/opt/garage-service-health.sh
+
+  - path: /etc/systemd/system/garage-service-health.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Garage service health reconciler timer
+
+      [Timer]
+      OnBootSec=2min
+      OnUnitActiveSec=2min
+      AccuracySec=30s
+      Persistent=true
+      Unit=garage-service-health.service
+
+      [Install]
+      WantedBy=timers.target
+
 runcmd:
   - [ufw, disable]
   - [bash, -c, "bash /opt/garage-data-disk.sh"]
   - [bash, -c, "bash /opt/garage-install.sh"]
   - [systemctl, daemon-reload]
   - [systemctl, enable, garage]
+  - [systemctl, enable, garage-service-health.timer]
   # garage daemon is NOT started here — sequential bootstrap starts it
   # after cluster init (n1) or node connect (n2/n3).
   # See plan/01-phase1-bootstrap.md for the bootstrap sequence.
+  - [systemctl, start, garage-service-health.timer]
   - [systemctl, enable, qemu-guest-agent]
   - [systemctl, start, qemu-guest-agent]
 
