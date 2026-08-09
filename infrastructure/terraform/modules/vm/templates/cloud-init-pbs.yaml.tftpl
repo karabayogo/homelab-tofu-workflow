@@ -111,6 +111,7 @@ write_files:
       curl -fsSL https://enterprise.proxmox.com/debian/proxmox-release-trixie.gpg -o /etc/apt/keyrings/proxmox-release-trixie.gpg
       chmod 0644 /etc/apt/keyrings/proxmox-release-trixie.gpg
 
+      rm -f /etc/apt/sources.list.d/pbs-enterprise.list /etc/apt/sources.list.d/pbs-enterprise.sources
       cat > /etc/apt/sources.list.d/pbs-install-repo.list <<'EOF'
       deb [signed-by=/etc/apt/keyrings/proxmox-release-trixie.gpg] http://download.proxmox.com/debian/pbs trixie pbs-no-subscription
       EOF
@@ -133,7 +134,14 @@ write_files:
         exit 1
       fi
 
-      if ! proxmox-backup-manager datastore list | awk 'NR>1 {print $1}' | grep -qx "$DATASTORE_NAME"; then
+      if ! proxmox-backup-manager datastore list --output-format json | python3 - "$DATASTORE_NAME" <<'PY'
+import json
+import sys
+name = sys.argv[1]
+items = json.load(sys.stdin)
+sys.exit(0 if any(item.get("name") == name for item in items) else 1)
+PY
+      then
         proxmox-backup-manager datastore create "$DATASTORE_NAME" "$DATASTORE_PATH"
       fi
 

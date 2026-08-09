@@ -17,5 +17,7 @@ grep -q 'ROOT_DISK="/dev/$(lsblk -no PKNAME "$${ROOT_SOURCE}")"' "$TEMPLATE"
 grep -q 'LABEL="pbs-datastore"' "$TEMPLATE"
 # shellcheck disable=SC2016
 grep -q 'echo "LABEL=$LABEL $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab.tmp' "$TEMPLATE"
+grep -q 'rm -f /etc/apt/sources.list.d/pbs-enterprise.list /etc/apt/sources.list.d/pbs-enterprise.sources' "$TEMPLATE"
+grep -q 'proxmox-backup-manager datastore list --output-format json' "$TEMPLATE"
 
 echo "PBS cloud-init data-disk contract passed"
