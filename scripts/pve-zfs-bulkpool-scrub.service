@@ -1,0 +1,9 @@
+[Unit]
+Description=Start a managed scrub for the bulkpool ZFS pool
+Documentation=man:zpool-scrub(8)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/bin/pve-zfs-bulkpool-scrub.sh bulkpool

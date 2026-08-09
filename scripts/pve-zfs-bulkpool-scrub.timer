@@ -1,0 +1,12 @@
+[Unit]
+Description=Managed second-Sunday daytime scrub for bulkpool
+Documentation=man:systemd.timer(5)
+
+[Timer]
+OnCalendar=Sun *-*-08..14 13:24:00
+Persistent=true
+RandomizedDelaySec=0
+Unit=pve-zfs-bulkpool-scrub.service
+
+[Install]
+WantedBy=timers.target

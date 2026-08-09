@@ -83,6 +83,44 @@ resource "proxmox_storage_zfspool" "bulkpool" {
   thin_provision = true
 }
 
+# Strategic host-side storage split after the 2026-08-09 PVE zvol hang RCA:
+# keep bulkpool as the capacity tier, but expose a file-backed directory storage
+# on top of the same pool for management-plane / standalone VM data disks.
+#
+# Why: the incident signatures were in the ZFS zvol event path
+# (`zvol_check_events`, `txg_wait_synced`, `systemd-udevd` watchdog), so the
+# durable direction is to shrink the blast radius of zvol-backed guest disks
+# instead of letting every non-root data disk ride the same zvol code path.
+#
+# We keep the workers' Longhorn replica disks and the large Garage capacity tier
+# on explicit zvol-backed bulkpool for now, but move small management-plane data
+# disks to file-backed images. That is a strategic reduction in host-side zvol
+# pressure without forcing an all-at-once migration of every high-capacity disk.
+resource "null_resource" "bulkpool_dir_path" {
+  triggers = {
+    proxmox_host = "192.168.1.50"
+    ssh_key_path = "/home/moltbot/.ssh/pve-kai"
+    path         = "/bulkpool/proxmox-dir"
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      ssh -o BatchMode=yes -o ConnectTimeout=10 -i "${self.triggers.ssh_key_path}" "root@${self.triggers.proxmox_host}" \
+        "install -d -m 0755 '${self.triggers.path}'"
+    EOT
+  }
+}
+
+resource "proxmox_storage_directory" "bulkpool_dir" {
+  id    = "bulkpool-dir"
+  nodes = ["pve"]
+
+  path    = "/bulkpool/proxmox-dir"
+  content = ["images"]
+
+  depends_on = [null_resource.bulkpool_dir_path]
+}
+
 locals {
   k3s_api_vip        = var.k3s_api_vip
   legacy_vm_contract = jsondecode(file("${path.root}/../contracts/legacy-vm-contracts.json"))
@@ -443,15 +481,18 @@ module "openclaw" {
   os_disk_size_gb   = 64
   data_disk_size_gb = 50
   vm_storage        = "local-zfs"
-  data_storage      = "bulkpool"
-  bridge            = "vmbr0"
-  vm_os_type        = "l26"
-  vm_bios           = "ovmf"
-  vm_machine        = "q35"
-  tags              = ["standalone"]
-  os_version        = "24.04"
-  static_ip         = "192.168.1.252"
-  vm_started        = true
+  # Strategic 2026-08-09 RCA: keep management-plane data disks off the ZFS zvol
+  # event path where possible. Use file-backed bulkpool-dir instead of a bulkpool
+  # zvol for standalone runtime state.
+  data_storage = "bulkpool-dir"
+  bridge       = "vmbr0"
+  vm_os_type   = "l26"
+  vm_bios      = "ovmf"
+  vm_machine   = "q35"
+  tags         = ["standalone"]
+  os_version   = "24.04"
+  static_ip    = "192.168.1.252"
+  vm_started   = true
 
   admin_user  = "henesink"
   ssh_pub_key = file("${path.root}/ssh-keys/id_ed25519.pub")
@@ -488,13 +529,18 @@ module "backup_pbs1" {
   os_disk_size_gb   = 32
   data_disk_size_gb = 500
   vm_storage        = "local-zfs"
-  data_storage      = "bulkpool"
-  bridge            = "vmbr0"
-  vm_os_type        = "l26"
-  vm_bios           = "ovmf"
-  vm_machine        = "q35"
-  tags              = ["backup", "pbs"]
-  os_version        = "13"
+  # Keep PBS on bulkpool zvols for now: the 500 GiB live move on the same host
+  # is too heavy to bundle into a generic daytime Infra Apply. The strategic fix
+  # implemented here is the *contract split* (bulkpool-dir for small management
+  # disks + managed scrub timing + exact-signature watchdoging). PBS remains an
+  # explicit follow-up maintenance migration, not an implicit CI side effect.
+  data_storage = "bulkpool"
+  bridge       = "vmbr0"
+  vm_os_type   = "l26"
+  vm_bios      = "ovmf"
+  vm_machine   = "q35"
+  tags         = ["backup", "pbs"]
+  os_version   = "13"
   # 2026-07-17 RCA: .245 had a live duplicate-IP conflict on the LAN.
   # Move PBS to a collision-free address and keep the desired endpoint in Git.
   static_ip  = "192.168.1.247"
@@ -531,16 +577,18 @@ module "tofu_state1" {
   os_disk_size_gb   = 16
   data_disk_size_gb = 32
   vm_storage        = "local-zfs"
-  data_storage      = "bulkpool"
-  bridge            = "vmbr0"
-  vm_os_type        = "l26"
-  vm_bios           = "ovmf"
-  vm_machine        = "q35"
-  tags              = ["control-plane", "state-backend"]
-  os_version        = "13"
-  static_ip         = "192.168.1.246"
-  vm_started        = true
-  onboot            = true
+  # Strategic 2026-08-09 RCA: keep the Terraform state backend on file-backed
+  # storage so control-plane state is not another bulkpool zvol guest.
+  data_storage = "bulkpool-dir"
+  bridge       = "vmbr0"
+  vm_os_type   = "l26"
+  vm_bios      = "ovmf"
+  vm_machine   = "q35"
+  tags         = ["control-plane", "state-backend"]
+  os_version   = "13"
+  static_ip    = "192.168.1.246"
+  vm_started   = true
+  onboot       = true
 
   proxmox_host       = "192.168.1.50"
   ssh_key_path       = "/home/moltbot/.ssh/pve-kai"

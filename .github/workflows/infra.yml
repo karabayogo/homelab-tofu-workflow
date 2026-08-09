@@ -264,21 +264,29 @@ jobs:
           echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
           chmod 600 "$HOME/.ssh/pve-kai"
 
-      - name: Verify PVE host backup stack on PRs
+      - name: Verify PVE host storage contracts on PRs
         if: github.event_name == 'pull_request'
         run: |
           bash scripts/validate-pbs-cloud-init-datadisk.sh
+          bash scripts/validate-bulkpool-storage-contract.sh
           SCRIPT_PATH="scripts/enforce-pve-host-backup-stack.sh"
           test -f "$SCRIPT_PATH"
           bash "$SCRIPT_PATH" --check
+          SCRUB_SCRIPT="scripts/enforce-pve-zfs-scrub-contract.sh"
+          test -f "$SCRUB_SCRIPT"
+          bash "$SCRUB_SCRIPT" --check
 
-      - name: Verify PVE host backup stack
+      - name: Verify PVE host storage contracts
         if: github.event_name != 'pull_request'
         run: |
           bash scripts/validate-pbs-cloud-init-datadisk.sh
+          bash scripts/validate-bulkpool-storage-contract.sh
           SCRIPT_PATH="scripts/enforce-pve-host-backup-stack.sh"
           test -f "$SCRIPT_PATH"
           bash "$SCRIPT_PATH" --check
+          SCRUB_SCRIPT="scripts/enforce-pve-zfs-scrub-contract.sh"
+          test -f "$SCRUB_SCRIPT"
+          bash "$SCRUB_SCRIPT" --check
 
   legacy-vm-memory-contract:
     needs: tofu
