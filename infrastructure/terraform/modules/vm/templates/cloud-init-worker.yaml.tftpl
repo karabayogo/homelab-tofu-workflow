@@ -37,7 +37,7 @@ write_files:
       node-ip: "${static_ip}"
 %{ if node_labels_yaml != "" ~}
       node-label:
-${indent(6, node_labels_yaml)}
+${indent(8, node_labels_yaml)}
 %{ endif ~}
   %{ if data_disk_size_gb > 0 ~}
   - path: /opt/longhorn-setup.sh

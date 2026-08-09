@@ -20,6 +20,7 @@ jobs:
         with:
           sparse-checkout: |
             infrastructure/terraform/modules/vm/templates
+            scripts
           sparse-checkout-cone-mode: false
 
       - name: Enforce write_files-based k3s cloud-init templates
@@ -37,6 +38,9 @@ jobs:
             echo "::error::k3s cloud-init templates must not render shell heredocs for k3s/kube-vip files; use write_files instead"
             exit 1
           fi
+
+      - name: Validate k3s node-label cloud-init contract
+        run: bash scripts/validate-k3s-cloud-init-node-labels.sh
 
   tofu:
     needs: cloud-init-template-contract
@@ -150,6 +154,40 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           SCRIPT_PATH="scripts/enforce-k8s-cloud-init-sudoers.sh"
+          test -f "$SCRIPT_PATH"
+          bash "$SCRIPT_PATH" --enforce
+
+  k8s-k3s-config-node-label-convergence:
+    needs: tofu
+    if: needs.tofu.result == 'success'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            infrastructure
+            scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Write node SSH key
+        run: |
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
+          chmod 600 "$HOME/.ssh/pve-kai"
+
+      - name: Verify k3s config/node-label convergence on PRs
+        if: github.event_name == 'pull_request'
+        run: |
+          SCRIPT_PATH="scripts/enforce-k8s-k3s-config.sh"
+          test -f "$SCRIPT_PATH"
+          bash "$SCRIPT_PATH" --check
+
+      - name: Enforce k3s config/node-label convergence on managed k8s nodes
+        if: github.event_name != 'pull_request'
+        run: |
+          SCRIPT_PATH="scripts/enforce-k8s-k3s-config.sh"
           test -f "$SCRIPT_PATH"
           bash "$SCRIPT_PATH" --enforce
 
