@@ -39,8 +39,23 @@ write_files:
       #!/bin/bash
       set -euo pipefail
 
-      DISK="/dev/sdb"
+      LABEL="pbs-datastore"
       MOUNT_POINT="/srv/proxmox-backup-primary"
+
+      ROOT_SOURCE="$(findmnt -n -o SOURCE /)"
+      ROOT_DISK="/dev/$(lsblk -no PKNAME "$${ROOT_SOURCE}")"
+      mapfile -t DATA_DISKS < <(
+        lsblk -dnpo NAME,TYPE \
+          | awk '$2 == "disk" { print $1 }' \
+          | grep -vx "$${ROOT_DISK}"
+      )
+
+      if [ "$${#DATA_DISKS[@]}" -ne 1 ]; then
+        echo "ERROR: expected exactly one non-root PBS data disk, found: $${DATA_DISKS[*]:-none}"
+        exit 1
+      fi
+
+      DISK="$${DATA_DISKS[0]}"
 
       for i in $(seq 1 30); do
         if [ -b "$DISK" ]; then
@@ -54,20 +69,26 @@ write_files:
         exit 1
       fi
 
-      if ! blkid "$DISK" > /dev/null 2>&1; then
-        mkfs.ext4 -F -L pbs-datastore "$DISK"
+      CURRENT_LABEL="$(blkid -s LABEL -o value "$${DISK}" 2>/dev/null || true)"
+
+      if ! blkid "$${DISK}" > /dev/null 2>&1; then
+        mkfs.ext4 -F -L "$LABEL" "$${DISK}"
+        CURRENT_LABEL="$LABEL"
+      elif [ "$${CURRENT_LABEL:-}" != "$LABEL" ]; then
+        tune2fs -L "$LABEL" "$${DISK}"
+        CURRENT_LABEL="$LABEL"
       fi
 
       mkdir -p "$MOUNT_POINT"
+      awk '$2 != "/srv/proxmox-backup-primary" { print }' /etc/fstab > /etc/fstab.tmp
+      echo "LABEL=$LABEL $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab.tmp
+      mv /etc/fstab.tmp /etc/fstab
+
       if ! mountpoint -q "$MOUNT_POINT"; then
-        mount "$DISK" "$MOUNT_POINT"
+        mount "$MOUNT_POINT"
       fi
 
-      if ! awk '$2 == "/srv/proxmox-backup-primary" { found=1 } END { exit found ? 0 : 1 }' /etc/fstab; then
-        echo "$DISK $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
-      fi
-
-      mkdir -p "$MOUNT_POINT/datastore"
+      mkdir -p "$${MOUNT_POINT}/datastore"
 
   - path: /opt/pbs-install.sh
     permissions: "0755"

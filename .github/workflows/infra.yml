@@ -253,6 +253,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           sparse-checkout: |
+            infrastructure
             scripts
           sparse-checkout-cone-mode: false
 
@@ -266,16 +267,18 @@ jobs:
       - name: Verify PVE host backup stack on PRs
         if: github.event_name == 'pull_request'
         run: |
+          bash scripts/validate-pbs-cloud-init-datadisk.sh
           SCRIPT_PATH="scripts/enforce-pve-host-backup-stack.sh"
           test -f "$SCRIPT_PATH"
           bash "$SCRIPT_PATH" --check
 
-      - name: Enforce PVE host backup stack
+      - name: Verify PVE host backup stack
         if: github.event_name != 'pull_request'
         run: |
+          bash scripts/validate-pbs-cloud-init-datadisk.sh
           SCRIPT_PATH="scripts/enforce-pve-host-backup-stack.sh"
           test -f "$SCRIPT_PATH"
-          bash "$SCRIPT_PATH" --enforce
+          bash "$SCRIPT_PATH" --check
 
   legacy-vm-memory-contract:
     needs: tofu
