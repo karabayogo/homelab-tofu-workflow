@@ -101,9 +101,13 @@ ROOT="/srv/proxmox-backup-primary/datastore"
 groups=(host/pve-config vm/201 vm/300 vm/906)
 declare -A chunks=()
 for group in "${groups[@]}"; do
-  latest="$(find "$ROOT/$group" -maxdepth 1 -mindepth 1 -type d | sort | tail -1)"
+  latest=""
+  while IFS= read -r candidate; do
+    [[ -f "$candidate/index.json.blob" ]] || continue
+    latest="$candidate"
+  done < <(find "$ROOT/$group" -maxdepth 1 -mindepth 1 -type d | sort)
   if [[ -z "$latest" ]]; then
-    echo "missing latest snapshot for $group" >&2
+    echo "missing latest complete snapshot for $group" >&2
     exit 1
   fi
   rel_dir="${latest#"$ROOT/"}"
@@ -143,13 +147,13 @@ capture_pbs_state_manifest() {
       echo "== sync-jobs =="
       proxmox-backup-manager sync-job list --output-format json-pretty
       echo "== latest-host-group =="
-      find /srv/proxmox-backup-primary/datastore/host/pve-config -maxdepth 1 -mindepth 1 -type d | sort | tail -1
+      latest=""; while read -r d; do [[ -f "$d/index.json.blob" ]] && latest="$d"; done < <(find /srv/proxmox-backup-primary/datastore/host/pve-config -maxdepth 1 -mindepth 1 -type d | sort); printf "%s\n" "$latest"
       echo "== latest-vm201-group =="
-      find /srv/proxmox-backup-primary/datastore/vm/201 -maxdepth 1 -mindepth 1 -type d | sort | tail -1
+      latest=""; while read -r d; do [[ -f "$d/index.json.blob" ]] && latest="$d"; done < <(find /srv/proxmox-backup-primary/datastore/vm/201 -maxdepth 1 -mindepth 1 -type d | sort); printf "%s\n" "$latest"
       echo "== latest-vm300-group =="
-      find /srv/proxmox-backup-primary/datastore/vm/300 -maxdepth 1 -mindepth 1 -type d | sort | tail -1
+      latest=""; while read -r d; do [[ -f "$d/index.json.blob" ]] && latest="$d"; done < <(find /srv/proxmox-backup-primary/datastore/vm/300 -maxdepth 1 -mindepth 1 -type d | sort); printf "%s\n" "$latest"
       echo "== latest-vm906-group =="
-      find /srv/proxmox-backup-primary/datastore/vm/906 -maxdepth 1 -mindepth 1 -type d | sort | tail -1
+      latest=""; while read -r d; do [[ -f "$d/index.json.blob" ]] && latest="$d"; done < <(find /srv/proxmox-backup-primary/datastore/vm/906 -maxdepth 1 -mindepth 1 -type d | sort); printf "%s\n" "$latest"
     }
   ' > "$LATEST_STATE_FILE"
 }
