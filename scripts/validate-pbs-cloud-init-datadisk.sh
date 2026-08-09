@@ -18,6 +18,12 @@ grep -q 'LABEL="pbs-datastore"' "$TEMPLATE"
 # shellcheck disable=SC2016
 grep -q 'echo "LABEL=$LABEL $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab.tmp' "$TEMPLATE"
 grep -q 'rm -f /etc/apt/sources.list.d/pbs-enterprise.list /etc/apt/sources.list.d/pbs-enterprise.sources' "$TEMPLATE"
-grep -q 'proxmox-backup-manager datastore list --output-format json' "$TEMPLATE"
+grep -q 'proxmox-backup-manager datastore list --output-format json | python3 -c' "$TEMPLATE"
+grep -q 'proxmox-backup-server rsync' "$TEMPLATE"
+# shellcheck disable=SC2016
+if grep -q 'python3 - "\$DATASTORE_NAME" <<'"'"'PY'"'"'' "$TEMPLATE"; then
+  echo "FAIL: heredoc-based datastore existence check is broken in $TEMPLATE" >&2
+  exit 1
+fi
 
 echo "PBS cloud-init data-disk contract passed"

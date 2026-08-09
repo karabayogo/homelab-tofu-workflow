@@ -14,6 +14,7 @@ packages:
   - gnupg
   - apt-transport-https
   - ca-certificates
+  - rsync
 
 disable_root: false
 users:
@@ -118,7 +119,7 @@ write_files:
 
       export DEBIAN_FRONTEND=noninteractive
       apt_retry apt-get update -qq -o Acquire::ForceIPv4=true
-      apt_retry apt-get install -y -o Acquire::ForceIPv4=true --fix-missing proxmox-backup-server
+      apt_retry apt-get install -y -o Acquire::ForceIPv4=true --fix-missing proxmox-backup-server rsync
 
   - path: /opt/pbs-bootstrap.sh
     permissions: "0755"
@@ -134,13 +135,7 @@ write_files:
         exit 1
       fi
 
-      if ! proxmox-backup-manager datastore list --output-format json | python3 - "$DATASTORE_NAME" <<'PY'
-import json
-import sys
-name = sys.argv[1]
-items = json.load(sys.stdin)
-sys.exit(0 if any(item.get("name") == name for item in items) else 1)
-PY
+      if ! proxmox-backup-manager datastore list --output-format json | python3 -c 'import json, sys; name = sys.argv[1]; items = json.load(sys.stdin); sys.exit(0 if any(item.get("name") == name for item in items) else 1)' "$DATASTORE_NAME"
       then
         proxmox-backup-manager datastore create "$DATASTORE_NAME" "$DATASTORE_PATH"
       fi

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run homelab backup health checks
+
+[Timer]
+OnCalendar=*-*-* 05:10:00
+Persistent=true
+Unit=backup-health-check.service
+
+[Install]
+WantedBy=timers.target

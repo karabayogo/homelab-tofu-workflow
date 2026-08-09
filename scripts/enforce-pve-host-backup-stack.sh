@@ -216,12 +216,7 @@ if [ "$MODE" = "enforce" ]; then
   fi
 
   mkdir -p "$DATASTORE_PATH"
-  if ! proxmox-backup-manager datastore list --output-format json | python3 - <<'PY'
-import json
-import sys
-items = json.load(sys.stdin)
-sys.exit(0 if any(item.get("name") == "primary" for item in items) else 1)
-PY
+  if ! proxmox-backup-manager datastore list --output-format json | python3 -c 'import json, sys; items = json.load(sys.stdin); sys.exit(0 if any(item.get("name") == "primary" for item in items) else 1)'
   then
     proxmox-backup-manager datastore create primary "$DATASTORE_PATH"
   fi

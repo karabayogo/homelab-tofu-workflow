@@ -509,7 +509,9 @@ module "openclaw" {
 # Strategic intent:
 #   - local restore UX via PBS
 #   - no Synology/NFS mount in the Proxmox management plane
-#   - keep the current VM201/Synology DR copy as the off-host layer
+#   - use VM201 as a Git-managed off-host bridge that mirrors the live PBS
+#     datastore + config to Synology, so DR follows the current backup source
+#     of truth instead of stale pre-PBS dump artifacts
 #   - boot automatically because the host-side RAM reservations were
 #     right-sized after the 2026-07-15 memory-pressure RCA
 module "backup_pbs1" {

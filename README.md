@@ -85,6 +85,7 @@ jobs:
 - Terraform enforces a PVE host memory budget so CI fails before a single-host overcommit can push Proxmox into swap thrash again
 - Legacy/manual VMs are accounted for explicitly in that budget until they are onboarded into GitOps as cattle
 - PVE host config is backed up to PBS via `scripts/pve-host-config-backup-to-pbs.{sh,service,timer}` instead of mounting Synology/NFS into the management plane
+- VM201 carries the Git-managed off-host DR bridge: `scripts/pve-backup-sync-to-synology.{sh,service,timer}` mirrors the live PBS datastore + config and the existing host/rootfs artifacts to Synology, while `scripts/backup-health-check.sh` and `scripts/backup-restore-drill.sh` validate the copy
 - VMs are cattle: `prevent_destroy = true`, imported via `tofu import`, cloud-init handles k3s bootstrap
 - Worker nodes get `node-role.kubernetes.io/worker` label applied via post-create kubectl hook
 # smoke test 2026-05-20T22:35:35+10:00

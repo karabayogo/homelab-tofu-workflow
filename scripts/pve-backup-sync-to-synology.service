@@ -1,0 +1,14 @@
+[Unit]
+Description=Sync PVE backup artifacts to Synology
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/synology/proxmoxbackups
+
+[Service]
+Type=oneshot
+User=moltbot
+Group=moltbot
+Environment=HOME=/home/moltbot
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/moltbot/bin:/home/moltbot/.npm-global/bin
+ExecStart=/usr/local/sbin/pve-backup-sync-to-synology.sh
+UMask=0077

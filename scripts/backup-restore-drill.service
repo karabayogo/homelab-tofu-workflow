@@ -1,0 +1,10 @@
+[Unit]
+Description=Run non-destructive backup restore drill
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/synology/proxmoxbackups
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/backup-restore-drill.sh
+UMask=0077

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily sync of PVE backup artifacts to Synology
+
+[Timer]
+OnCalendar=*-*-* 04:45:00
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

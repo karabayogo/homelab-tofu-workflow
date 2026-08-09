@@ -272,6 +272,9 @@ jobs:
           SCRIPT_PATH="scripts/enforce-pve-host-backup-stack.sh"
           test -f "$SCRIPT_PATH"
           bash "$SCRIPT_PATH" --check
+          BOOTSTRAP_SCRIPT="scripts/enforce-pbs-bootstrap-scripts.sh"
+          test -f "$BOOTSTRAP_SCRIPT"
+          bash "$BOOTSTRAP_SCRIPT" --check
           SCRUB_SCRIPT="scripts/enforce-pve-zfs-scrub-contract.sh"
           test -f "$SCRUB_SCRIPT"
           bash "$SCRUB_SCRIPT" --check
@@ -284,9 +287,48 @@ jobs:
           SCRIPT_PATH="scripts/enforce-pve-host-backup-stack.sh"
           test -f "$SCRIPT_PATH"
           bash "$SCRIPT_PATH" --check
+          BOOTSTRAP_SCRIPT="scripts/enforce-pbs-bootstrap-scripts.sh"
+          test -f "$BOOTSTRAP_SCRIPT"
+          bash "$BOOTSTRAP_SCRIPT" --enforce
           SCRUB_SCRIPT="scripts/enforce-pve-zfs-scrub-contract.sh"
           test -f "$SCRUB_SCRIPT"
           bash "$SCRUB_SCRIPT" --check
+
+  vm201-offhost-backup-stack:
+    needs: tofu
+    if: needs.tofu.result == 'success'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            scripts
+            README.md
+          sparse-checkout-cone-mode: false
+
+      - name: Write PVE SSH key
+        run: |
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
+          chmod 600 "$HOME/.ssh/pve-kai"
+
+      - name: Verify VM201 off-host backup contract on PRs
+        if: github.event_name == 'pull_request'
+        run: |
+          bash scripts/validate-vm201-offhost-backup-contract.sh
+          SCRIPT_PATH="scripts/enforce-vm201-offhost-backup-stack.sh"
+          test -f "$SCRIPT_PATH"
+          bash "$SCRIPT_PATH" --check
+
+      - name: Enforce VM201 off-host backup contract
+        if: github.event_name != 'pull_request'
+        run: |
+          bash scripts/validate-vm201-offhost-backup-contract.sh
+          SCRIPT_PATH="scripts/enforce-vm201-offhost-backup-stack.sh"
+          test -f "$SCRIPT_PATH"
+          bash "$SCRIPT_PATH" --enforce
 
   legacy-vm-memory-contract:
     needs: tofu

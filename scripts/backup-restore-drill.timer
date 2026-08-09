@@ -1,0 +1,10 @@
+[Unit]
+Description=Run monthly non-destructive backup restore drill
+
+[Timer]
+OnCalendar=monthly
+Persistent=true
+Unit=backup-restore-drill.service
+
+[Install]
+WantedBy=timers.target

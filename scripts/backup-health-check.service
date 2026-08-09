@@ -1,0 +1,10 @@
+[Unit]
+Description=Validate off-host backup freshness and completeness
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/synology/proxmoxbackups
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/backup-health-check.sh
+UMask=0077
