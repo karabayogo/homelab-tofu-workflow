@@ -529,12 +529,11 @@ module "backup_pbs1" {
   os_disk_size_gb   = 32
   data_disk_size_gb = 500
   vm_storage        = "local-zfs"
-  # Keep PBS on bulkpool zvols for now: the 500 GiB live move on the same host
-  # is too heavy to bundle into a generic daytime Infra Apply. The strategic fix
-  # implemented here is the *contract split* (bulkpool-dir for small management
-  # disks + managed scrub timing + exact-signature watchdoging). PBS remains an
-  # explicit follow-up maintenance migration, not an implicit CI side effect.
-  data_storage = "bulkpool"
+  # 2026-08-09 explicit maintenance migration completed: PBS now lives on the
+  # file-backed bulkpool-dir tier alongside the other management-plane disks.
+  # This keeps the restore tier off the zvol event path implicated in the host
+  # stall RCA while preserving bulkpool itself as the high-capacity backing pool.
+  data_storage = "bulkpool-dir"
   bridge       = "vmbr0"
   vm_os_type   = "l26"
   vm_bios      = "ovmf"

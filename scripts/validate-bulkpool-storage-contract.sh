@@ -38,7 +38,7 @@ require_pattern 'resource "proxmox_storage_directory" "bulkpool_dir"' "$MAIN_TF"
 require_pattern 'path *= *"/bulkpool/proxmox-dir"' "$MAIN_TF" 'bulkpool-dir path must be /bulkpool/proxmox-dir'
 require_pattern 'content *= *\["images"\]' "$MAIN_TF" 'bulkpool-dir must be images-only storage'
 
-for module in openclaw tofu_state1; do
+for module in openclaw backup_pbs1 tofu_state1; do
   block="$(module_block "$module")"
   if [[ -z "$block" ]]; then
     echo "[ERROR] module $module not found in $MAIN_TF" >&2
