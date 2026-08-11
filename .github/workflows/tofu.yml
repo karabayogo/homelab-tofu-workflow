@@ -210,6 +210,11 @@ jobs:
           unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL_OVERRIDE
           ~/.local/bin/tofu init -upgrade -reconfigure -backend-config=/tmp/tofu-backend.hcl
 
+      - name: Clear stale worker2 taint after operator-led cattle rebuilds
+        run: |
+          cd ${{ inputs.checkout_path }}/${{ inputs.terraform_dir }}
+          ~/.local/bin/tofu untaint module.k8s_worker2.proxmox_virtual_environment_vm.this[0] || true
+
       - name: Terraform apply
         # -refresh=false avoids bpg/proxmox provider "Plugin did not respond"
         # hangs during ReadResource for rebuilt VMs (see RCA 2026-07-14 VM 600 rebuild).
