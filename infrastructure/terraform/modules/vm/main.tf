@@ -159,6 +159,14 @@ resource "proxmox_virtual_environment_vm" "this" {
       upgrade           = false
       user_data_file_id = proxmox_virtual_environment_file.cloud_init_snippet[0].id
 
+      user_account {
+        username = var.admin_user
+        keys = compact([
+          trimspace(var.ssh_pub_key),
+          var.tofu_deploy_key != "" ? trimspace(var.tofu_deploy_key) : null,
+        ])
+      }
+
       ip_config {
         ipv4 {
           address = "${var.static_ip}/24"
