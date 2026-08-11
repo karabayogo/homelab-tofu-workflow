@@ -144,7 +144,7 @@ locals {
     4096 + # k8s-master2
     4096 + # k8s-master1
     4096 + # k8s-master3
-    6144 + # k8s-worker1
+    5120 + # k8s-worker1
     6144 + # k8s-worker2
     4096 + # home-assistant-os
     2048 + # openclaw (reduced 3→2 GiB, 2026-07-21 RCA)
@@ -362,9 +362,11 @@ module "k8s_worker1" {
   # Right-sized after the 2026-07-15 host-memory RCA.
   # 4 GiB proved too small during the June 29 worker OOM incident, but the
   # 8 GiB fixed reservation materially contributed to host swap pressure.
-  # Observed steady-state guest usage was ~3.3 GiB with ~4.5 GiB available,
-  # so 6 GiB keeps real workload headroom while reducing PVE overcommit.
-  memory_mb         = 6144
+  # Current live state (2026-08-11) shows ~2.2 GiB used with ~3.7 GiB
+  # available in-guest, while Kubernetes requested memory is ~3.7 GiB.
+  # 5 GiB preserves >1 GiB of node headroom above current requests while
+  # buying back 1 GiB of real PVE host capacity after the HAOS 4 GiB bump.
+  memory_mb         = 5120
   cpu_cores         = 4
   cpu_units         = 1024
   os_disk_size_gb   = 80
