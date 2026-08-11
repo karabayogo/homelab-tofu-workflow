@@ -159,6 +159,13 @@ locals {
   )
 }
 
+check "k3s_token_present" {
+  assert {
+    condition     = trimspace(var.k3s_token) != ""
+    error_message = "k3s_token must not be empty. Empty-token applies create boot-broken k3s nodes that cannot join the cluster after reboot or rebuild."
+  }
+}
+
 check "pve_host_memory_budget" {
   assert {
     condition = (
@@ -404,7 +411,6 @@ module "k8s_worker1" {
     "node.longhorn.io/create-default-disk"           = "true"
     "storage.k8s.workbench.io/longhorn-primary-disk" = "longhorn-additional"
     "node.kubernetes.io/longhorn-storage"            = "available"
-    "node-role.kubernetes.io/worker"                 = "true"
   }
 
   protect_vm = true
@@ -459,7 +465,6 @@ module "k8s_worker2" {
     "node.longhorn.io/create-default-disk"           = "true"
     "storage.k8s.workbench.io/longhorn-primary-disk" = "longhorn-additional"
     "node.kubernetes.io/longhorn-storage"            = "available"
-    "node-role.kubernetes.io/worker"                 = "true"
   }
 
   protect_vm = true

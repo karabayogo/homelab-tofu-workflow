@@ -17,6 +17,11 @@ for path in "$MASTER" "$WORKER"; do
   fi
 done
 
+if grep -R -n --include='*.tf' --include='*.tftpl' 'node-role.kubernetes.io/worker' "$REPO_ROOT/infrastructure/terraform"; then
+  echo "::error::worker role labels must not be rendered via k3s --node-labels; kubelet rejects reserved node-role.kubernetes.io/* labels at startup"
+  exit 1
+fi
+
 grep -q '^  - path: /opt/longhorn-setup.sh$' "$WORKER"
 grep -q '^      cat > "\$MOUNT_POINT/longhorn/longhorn-disk.cfg" << '\''DISKEOF'\''$' "$WORKER"
 grep -q '^      {$' "$WORKER"
