@@ -181,6 +181,18 @@ variable "boot_order" {
   default     = ["scsi0"]
 }
 
+variable "serial_device_enabled" {
+  description = "Expose a serial socket device to the guest. Disable for imported appliances that were created without one."
+  type        = bool
+  default     = true
+}
+
+variable "cloud_init_enabled" {
+  description = "Attach a cloud-init snippet/ide2 initialization device. Disable for imported appliance VMs that do not boot via cloud-init."
+  type        = bool
+  default     = true
+}
+
 variable "tofu_deploy_key" {
   description = "SSH public key content for infra-tofu-cloudinit CI access (optional)"
   type        = string

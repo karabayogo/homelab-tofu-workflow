@@ -138,14 +138,15 @@ locals {
   # didn't see. Now we count ALL provisioned VMs (enable_*) plus a mandatory
   # headroom (pve_memory_headroom_mb) so CI fails before host overcommit.
   #
-  # VM 201 and VM 300 are still legacy/manual today, so they are accounted for
-  # via legacy-vm-contracts.json until they are onboarded as full Terraform cattle.
+  # VM 201 is still legacy/manual today, so it is accounted for via
+  # legacy-vm-contracts.json until it is onboarded as full Terraform cattle.
   pve_managed_running_vm_memory_mb = (
     4096 + # k8s-master2
     4096 + # k8s-master1
     4096 + # k8s-master3
     6144 + # k8s-worker1
     6144 + # k8s-worker2
+    3072 + # home-assistant-os
     2048 + # openclaw (reduced 3→2 GiB, 2026-07-21 RCA)
     2048 + # backup-pbs1 (reduced 4→2 GiB, 2026-07-21 RCA)
     1024 + # tofu-state1
@@ -503,6 +504,50 @@ module "openclaw" {
   cloud_init_template = "base"
 
   protect_vm = false
+}
+
+# ── Home Assistant OS appliance (VM 300) ───────────────────────────────────
+# Strategic 2026-08-11 fix:
+#   - make the appliance itself cattle at the Proxmox contract layer instead of
+#     leaving it as an unmanaged/manual headroom entry
+#   - keep the current 3 GiB RAM reservation because the PVE host is already
+#     right on the host-pressure threshold; the durable protection for the
+#     actual incident is a Git-managed HAOS automation-path watchdog that
+#     detects the exact sensor->automation stall and auto-heals with a reboot
+#   - disable cloud-init because HAOS is an imported appliance image, not a
+#     cloud-image guest
+module "home_assistant_os" {
+  source = "./modules/vm"
+
+  vm_id      = 300
+  vm_name    = "home-assistant-os"
+  memory_mb  = 3072
+  cpu_cores  = 4
+  vm_storage = "bulkpool"
+  bridge     = "vmbr0"
+  vm_os_type = "l26"
+  vm_bios    = "ovmf"
+  vm_machine = "q35"
+  tags       = ["standalone", "appliance", "home-assistant"]
+  vm_started = true
+  onboot     = true
+
+  os_disk_size_gb       = 32
+  os_disk_ssd           = false
+  network_mac           = "BC:24:11:93:64:45"
+  network_queues        = 0
+  efi_pre_enrolled_keys = false
+  static_ip             = "192.168.1.199"
+
+  proxmox_host = "192.168.1.50"
+  ssh_key_path = "/home/moltbot/.ssh/pve-kai"
+  proxmox_node = "pve"
+
+  k3s_enabled           = false
+  cloud_init_enabled    = false
+  serial_device_enabled = false
+
+  protect_vm = true
 }
 
 # ── Same-host PBS restore tier (VM 905) ──────────────────────────────────

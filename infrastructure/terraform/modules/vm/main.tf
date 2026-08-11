@@ -14,6 +14,8 @@
 
 # ── Cloud-init snippet: rendered from template, uploaded to Proxmox ──
 resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
+  count = var.cloud_init_enabled ? 1 : 0
+
   content_type = "snippets"
   datastore_id = "local"
   node_name    = var.proxmox_node
@@ -142,20 +144,26 @@ resource "proxmox_virtual_environment_vm" "this" {
   on_boot       = var.onboot
   scsi_hardware = var.scsi_hardware
 
-  serial_device {
-    device = "socket"
+  dynamic "serial_device" {
+    for_each = var.serial_device_enabled ? [1] : []
+    content {
+      device = "socket"
+    }
   }
 
-  initialization {
-    datastore_id      = var.vm_storage
-    interface         = "ide2"
-    upgrade           = false
-    user_data_file_id = proxmox_virtual_environment_file.cloud_init_snippet.id
+  dynamic "initialization" {
+    for_each = var.cloud_init_enabled ? [1] : []
+    content {
+      datastore_id      = var.vm_storage
+      interface         = "ide2"
+      upgrade           = false
+      user_data_file_id = proxmox_virtual_environment_file.cloud_init_snippet[0].id
 
-    ip_config {
-      ipv4 {
-        address = "${var.static_ip}/24"
-        gateway = "192.168.1.1"
+      ip_config {
+        ipv4 {
+          address = "${var.static_ip}/24"
+          gateway = "192.168.1.1"
+        }
       }
     }
   }
@@ -189,6 +197,9 @@ resource "proxmox_virtual_environment_vm" "this" {
       ipv4_addresses,
       ipv6_addresses,
       network_interface_names,
+      keyboard_layout,
+      agent[0].type,
+      cpu[0].hotplugged,
     ]
 
   }
