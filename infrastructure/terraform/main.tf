@@ -146,7 +146,7 @@ locals {
     4096 + # k8s-master3
     6144 + # k8s-worker1
     6144 + # k8s-worker2
-    3072 + # home-assistant-os
+    4096 + # home-assistant-os
     2048 + # openclaw (reduced 3→2 GiB, 2026-07-21 RCA)
     2048 + # backup-pbs1 (reduced 4→2 GiB, 2026-07-21 RCA)
     1024 + # tofu-state1
@@ -521,7 +521,7 @@ module "home_assistant_os" {
 
   vm_id      = 300
   vm_name    = "home-assistant-os"
-  memory_mb  = 3072
+  memory_mb  = 4096
   cpu_cores  = 4
   vm_storage = "local-zfs"
   bridge     = "vmbr0"
