@@ -523,7 +523,7 @@ module "home_assistant_os" {
   vm_name    = "home-assistant-os"
   memory_mb  = 3072
   cpu_cores  = 4
-  vm_storage = "bulkpool"
+  vm_storage = "local-zfs"
   bridge     = "vmbr0"
   vm_os_type = "l26"
   vm_bios    = "ovmf"
