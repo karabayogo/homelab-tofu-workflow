@@ -37,9 +37,11 @@ write_files:
       node-ip: "${static_ip}"
 %{ if node_labels_yaml != "" ~}
       node-label:
-${indent(8, node_labels_yaml)}
+%{ for label in split("\n", trimspace(node_labels_yaml)) ~}
+        ${label}
+%{ endfor ~}
 %{ endif ~}
-  %{ if data_disk_size_gb > 0 ~}
+%{ if data_disk_size_gb > 0 ~}
   - path: /opt/longhorn-setup.sh
     permissions: "0755"
     content: |
@@ -89,13 +91,13 @@ ${indent(8, node_labels_yaml)}
       # Create Longhorn disk config
       mkdir -p "$MOUNT_POINT/longhorn"
       cat > "$MOUNT_POINT/longhorn/longhorn-disk.cfg" << 'DISKEOF'
-{
-  "path": "/var/lib/longhorn-additional",
-  "allowScheduling": true,
-  "storageReserved": 0,
-  "tags": ["large-capacity"]
-}
-DISKEOF
+      {
+        "path": "/var/lib/longhorn-additional",
+        "allowScheduling": true,
+        "storageReserved": 0,
+        "tags": ["large-capacity"]
+      }
+      DISKEOF
       echo "[longhorn-setup] Longhorn disk config created"
       
       # Set ownership
@@ -103,7 +105,7 @@ DISKEOF
       chmod 755 "$MOUNT_POINT"
       
       echo "[longhorn-setup] Data disk setup complete"
-  %{ endif ~}
+%{ endif ~}
 
 runcmd:
   # === START Longhorn multipath hardening ===

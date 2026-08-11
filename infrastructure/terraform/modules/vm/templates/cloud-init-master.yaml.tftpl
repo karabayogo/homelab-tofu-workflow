@@ -53,7 +53,9 @@ write_files:
       resolv-conf: /etc/rancher/k3s/resolv.conf
 %{ if node_labels_yaml != "" ~}
       node-label:
-${indent(8, node_labels_yaml)}
+%{ for label in split("\n", trimspace(node_labels_yaml)) ~}
+        ${label}
+%{ endfor ~}
 %{ endif ~}
 
   - path: /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml

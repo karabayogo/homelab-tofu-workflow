@@ -403,9 +403,8 @@ module "k8s_worker1" {
   node_labels = {
     "node.longhorn.io/create-default-disk"           = "true"
     "storage.k8s.workbench.io/longhorn-primary-disk" = "longhorn-additional"
-  }
-  post_create_node_labels = {
-    "node.kubernetes.io/longhorn-storage" = "available"
+    "node.kubernetes.io/longhorn-storage"            = "available"
+    "node-role.kubernetes.io/worker"                 = "true"
   }
 
   protect_vm = true
@@ -459,9 +458,8 @@ module "k8s_worker2" {
   node_labels = {
     "node.longhorn.io/create-default-disk"           = "true"
     "storage.k8s.workbench.io/longhorn-primary-disk" = "longhorn-additional"
-  }
-  post_create_node_labels = {
-    "node.kubernetes.io/longhorn-storage" = "available"
+    "node.kubernetes.io/longhorn-storage"            = "available"
+    "node-role.kubernetes.io/worker"                 = "true"
   }
 
   protect_vm = true

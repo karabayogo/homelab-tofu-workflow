@@ -78,7 +78,7 @@ resource "proxmox_virtual_environment_file" "cloud_init_snippet" {
 # ── Locals: Node label helpers ──
 locals {
   node_labels_args           = length(var.node_labels) > 0 ? join(" ", [for k, v in var.node_labels : " --node-label ${k}=${v}"]) : ""
-  node_labels_yaml           = length(var.node_labels) > 0 ? join("\n", [for k, v in var.node_labels : "  - ${k}=${v}"]) : ""
+  node_labels_yaml           = length(var.node_labels) > 0 ? join("\n", [for k, v in var.node_labels : "- ${k}=${v}"]) : ""
   post_create_label_commands = length(var.post_create_node_labels) > 0 ? join("\n      ", [for k, v in var.post_create_node_labels : "kubectl label node \"$node_name\" ${k}=${v} --overwrite"]) : ""
 }
 
