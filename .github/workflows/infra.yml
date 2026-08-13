@@ -179,6 +179,8 @@ jobs:
 
       - name: Verify k3s config/node-label convergence on PRs
         if: github.event_name == 'pull_request'
+        env:
+          K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
         run: |
           SCRIPT_PATH="scripts/enforce-k8s-k3s-config.sh"
           test -f "$SCRIPT_PATH"
@@ -186,6 +188,8 @@ jobs:
 
       - name: Enforce k3s config/node-label convergence on managed k8s nodes
         if: github.event_name != 'pull_request'
+        env:
+          K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
         run: |
           SCRIPT_PATH="scripts/enforce-k8s-k3s-config.sh"
           test -f "$SCRIPT_PATH"
