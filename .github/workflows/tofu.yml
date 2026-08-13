@@ -228,3 +228,12 @@ jobs:
           fi
         env:
           K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
+
+      - name: Reconcile live worker k3s configs to Git-declared contract
+        env:
+          K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
+          ROLE_FILTER: agent
+        run: |
+          cd ${{ inputs.checkout_path }}
+          chmod +x scripts/enforce-k8s-k3s-config.sh
+          scripts/enforce-k8s-k3s-config.sh --enforce
