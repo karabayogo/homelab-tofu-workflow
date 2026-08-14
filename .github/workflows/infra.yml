@@ -282,6 +282,9 @@ jobs:
           SCRUB_SCRIPT="scripts/enforce-pve-zfs-scrub-contract.sh"
           test -f "$SCRUB_SCRIPT"
           bash "$SCRUB_SCRIPT" --check
+          ARC_SCRIPT="scripts/enforce-pve-zfs-arc-cap-contract.sh"
+          test -f "$ARC_SCRIPT"
+          bash "$ARC_SCRIPT" --check
 
       - name: Verify PVE host storage contracts
         if: github.event_name != 'pull_request'
@@ -297,6 +300,9 @@ jobs:
           SCRUB_SCRIPT="scripts/enforce-pve-zfs-scrub-contract.sh"
           test -f "$SCRUB_SCRIPT"
           bash "$SCRUB_SCRIPT" --check
+          ARC_SCRIPT="scripts/enforce-pve-zfs-arc-cap-contract.sh"
+          test -f "$ARC_SCRIPT"
+          bash "$ARC_SCRIPT" --enforce
 
   vm201-offhost-backup-stack:
     needs: tofu

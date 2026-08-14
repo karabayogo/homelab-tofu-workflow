@@ -83,6 +83,7 @@ jobs:
 - State is stored in a dedicated S3-compatible control-plane backend with `us-east-1` SigV4 compatibility
 - CI uses a dedicated compatibility credential on `tofu-state1` so backend migrations do not break runners during control-plane cutovers
 - Terraform enforces a PVE host memory budget so CI fails before a single-host overcommit can push Proxmox into swap thrash again
+- The PVE host's ZFS ARC cap is also Git-managed (`scripts/pve-zfs-arc-cap.conf`) and enforced from CI so storage cache growth cannot silently erase the declared host headroom
 - Any still-legacy/manual VM memory reservations are accounted for explicitly in that budget until they are onboarded into GitOps as cattle (today only VM201 remains in that category)
 - PVE host config is backed up to PBS via `scripts/pve-host-config-backup-to-pbs.{sh,service,timer}` instead of mounting Synology/NFS into the management plane
 - VM201 carries the Git-managed off-host DR bridge: `scripts/pve-backup-sync-to-synology.{sh,service,timer}` mirrors the latest protected PBS management-plane snapshots plus the required chunk set and PBS config, alongside the existing host/rootfs artifacts, while `scripts/backup-health-check.sh` and `scripts/backup-restore-drill.sh` validate the copy
