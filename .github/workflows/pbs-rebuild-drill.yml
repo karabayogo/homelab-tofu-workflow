@@ -1,0 +1,42 @@
+name: PBS Rebuild Drill
+
+# Cattle reproducibility proof for the same-host PBS restore tier.
+# Builds an ephemeral PBS VM from Git artifacts only (real cloud-init
+# template rendered via tofu console, repo vm-provisioner.sh, repo PBS
+# contract via enforce-pve-host-backup-stack.sh --check with PBS_VM_ID
+# override), then destroys it. Live PBS (VM 905) is never touched.
+#
+# 2026-08-09 review gap: "migration success is not a reproducibility
+# proof". This drill converts that one-off proof into a scheduled,
+# repo-owned regression.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Sundays 19:00 UTC = Sundays 05:00 AEST (next day, AEST=UTC+10)
+    - cron: '0 19 * * 0'
+
+concurrency:
+  group: pbs-rebuild-drill
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    runs-on: self-hosted
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Preflight — drill VMID/IP free, PVE reachable
+        run: |
+          set -e
+          if ping -c1 -W1 192.168.1.248 >/dev/null 2>&1; then
+            echo "::error::192.168.1.248 (drill IP) is in use — aborting"; exit 1
+          fi
+          ssh -i ~/.ssh/pve-kai -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@192.168.1.50 'qm status 907' \
+            && { echo "::error::VM 907 already exists — refusing to run drill"; exit 1; } \
+            || echo "[OK] VM 907 free, drill IP free"
+
+      - name: Run PBS rebuild drill
+        run: bash scripts/pbs-rebuild-drill.sh
