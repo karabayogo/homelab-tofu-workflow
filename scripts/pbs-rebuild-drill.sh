@@ -117,6 +117,7 @@ ssh_pve "qm create ${DRILL_VM_ID} \\
   --scsi1 bulkpool-dir:${DRILL_DATA_DISK_GB},ssd=1,discard=on,iothread=1 \\
   --net0 virtio=BC:24:11:AA:90:07,bridge=vmbr0,queues=4 \\
   --ipconfig0 ip=${DRILL_IP}/24,gw=192.168.1.1 \\
+  --ide2 local-zfs:cloudinit \\
   --agent enabled=1 --onboot 0 --boot order=scsi0 \\
   --tags drill,pbs \\
   --cicustom user=${SNIPPET_REMOTE}"
