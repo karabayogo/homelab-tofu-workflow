@@ -22,22 +22,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OFFHOST_SCRIPT_LOCAL="$SCRIPT_DIR/pve-backup-sync-to-synology.sh"
 HEALTH_SCRIPT_LOCAL="$SCRIPT_DIR/backup-health-check.sh"
 RESTORE_SCRIPT_LOCAL="$SCRIPT_DIR/backup-restore-drill.sh"
+UNIFI_SCRIPT_LOCAL="$SCRIPT_DIR/unifi-backup-to-synology.sh"
 OFFHOST_SERVICE_LOCAL="$SCRIPT_DIR/pve-backup-sync-to-synology.service"
 OFFHOST_TIMER_LOCAL="$SCRIPT_DIR/pve-backup-sync-to-synology.timer"
 HEALTH_SERVICE_LOCAL="$SCRIPT_DIR/backup-health-check.service"
 HEALTH_TIMER_LOCAL="$SCRIPT_DIR/backup-health-check.timer"
 RESTORE_SERVICE_LOCAL="$SCRIPT_DIR/backup-restore-drill.service"
 RESTORE_TIMER_LOCAL="$SCRIPT_DIR/backup-restore-drill.timer"
+UNIFI_SERVICE_LOCAL="$SCRIPT_DIR/unifi-backup-to-synology.service"
+UNIFI_TIMER_LOCAL="$SCRIPT_DIR/unifi-backup-to-synology.timer"
 
 OFFHOST_SCRIPT_REMOTE="/usr/local/sbin/pve-backup-sync-to-synology.sh"
 HEALTH_SCRIPT_REMOTE="/usr/local/sbin/backup-health-check.sh"
 RESTORE_SCRIPT_REMOTE="/usr/local/sbin/backup-restore-drill.sh"
+UNIFI_SCRIPT_REMOTE="/usr/local/sbin/unifi-backup-to-synology.sh"
 OFFHOST_SERVICE_REMOTE="/etc/systemd/system/pve-backup-sync-to-synology.service"
 OFFHOST_TIMER_REMOTE="/etc/systemd/system/pve-backup-sync-to-synology.timer"
 HEALTH_SERVICE_REMOTE="/etc/systemd/system/backup-health-check.service"
 HEALTH_TIMER_REMOTE="/etc/systemd/system/backup-health-check.timer"
 RESTORE_SERVICE_REMOTE="/etc/systemd/system/backup-restore-drill.service"
 RESTORE_TIMER_REMOTE="/etc/systemd/system/backup-restore-drill.timer"
+UNIFI_SERVICE_REMOTE="/etc/systemd/system/unifi-backup-to-synology.service"
+UNIFI_TIMER_REMOTE="/etc/systemd/system/unifi-backup-to-synology.timer"
 
 ssh_pve() {
   # shellcheck disable=SC2029
@@ -86,13 +92,21 @@ check_file() {
 
 check_runtime() {
   guest_exec 'mountpoint -q /mnt/synology/proxmoxbackups'
-  guest_exec 'systemctl is-enabled pve-backup-sync-to-synology.timer backup-health-check.timer backup-restore-drill.timer >/dev/null'
-  guest_exec 'systemctl is-active pve-backup-sync-to-synology.timer backup-health-check.timer backup-restore-drill.timer >/dev/null'
-  echo '[OK] VM201 off-host backup timers are enabled and active'
+  guest_exec 'systemctl is-enabled pve-backup-sync-to-synology.timer backup-health-check.timer backup-restore-drill.timer unifi-backup-to-synology.timer >/dev/null'
+  guest_exec 'systemctl is-active pve-backup-sync-to-synology.timer backup-health-check.timer backup-restore-drill.timer unifi-backup-to-synology.timer >/dev/null'
+  # Producer failure detection (2026-09-02 RCA: unifi-backup-to-synology
+  # failed 203/EXEC daily for 4 days with timer active — only a last-run
+  # state check catches "runs and fails" producers).
+  guest_exec 'systemctl is-failed pve-backup-sync-to-synology.service backup-health-check.service backup-restore-drill.service unifi-backup-to-synology.service >/dev/null; test $? -ne 0'
+  echo '[OK] VM201 off-host backup timers are enabled, active, and no producer unit is failed'
 }
 
 enable_timers() {
-  guest_exec 'systemctl daemon-reload && systemctl enable --now pve-backup-sync-to-synology.timer backup-health-check.timer backup-restore-drill.timer'
+  # reset-failed clears last-run failure state from BEFORE convergence
+  # (e.g. units that failed daily under the broken pre-fix stack); the next
+  # timer fire re-establishes real state. Without it, --enforce can never
+  # converge when any producer is currently failed.
+  guest_exec 'systemctl daemon-reload && systemctl enable --now pve-backup-sync-to-synology.timer backup-health-check.timer backup-restore-drill.timer unifi-backup-to-synology.timer && systemctl reset-failed pve-backup-sync-to-synology.service backup-health-check.service backup-restore-drill.service unifi-backup-to-synology.service'
 }
 
 case "$MODE" in
@@ -101,12 +115,15 @@ case "$MODE" in
     check_file "$OFFHOST_SCRIPT_LOCAL" "$OFFHOST_SCRIPT_REMOTE"
     check_file "$HEALTH_SCRIPT_LOCAL" "$HEALTH_SCRIPT_REMOTE"
     check_file "$RESTORE_SCRIPT_LOCAL" "$RESTORE_SCRIPT_REMOTE"
+    check_file "$UNIFI_SCRIPT_LOCAL" "$UNIFI_SCRIPT_REMOTE"
     check_file "$OFFHOST_SERVICE_LOCAL" "$OFFHOST_SERVICE_REMOTE"
     check_file "$OFFHOST_TIMER_LOCAL" "$OFFHOST_TIMER_REMOTE"
     check_file "$HEALTH_SERVICE_LOCAL" "$HEALTH_SERVICE_REMOTE"
     check_file "$HEALTH_TIMER_LOCAL" "$HEALTH_TIMER_REMOTE"
     check_file "$RESTORE_SERVICE_LOCAL" "$RESTORE_SERVICE_REMOTE"
     check_file "$RESTORE_TIMER_LOCAL" "$RESTORE_TIMER_REMOTE"
+    check_file "$UNIFI_SERVICE_LOCAL" "$UNIFI_SERVICE_REMOTE"
+    check_file "$UNIFI_TIMER_LOCAL" "$UNIFI_TIMER_REMOTE"
     check_runtime
     ;;
   --enforce)
@@ -114,12 +131,15 @@ case "$MODE" in
     copy_to_guest "$OFFHOST_SCRIPT_LOCAL" "$OFFHOST_SCRIPT_REMOTE" 0755
     copy_to_guest "$HEALTH_SCRIPT_LOCAL" "$HEALTH_SCRIPT_REMOTE" 0755
     copy_to_guest "$RESTORE_SCRIPT_LOCAL" "$RESTORE_SCRIPT_REMOTE" 0755
+    copy_to_guest "$UNIFI_SCRIPT_LOCAL" "$UNIFI_SCRIPT_REMOTE" 0755
     copy_to_guest "$OFFHOST_SERVICE_LOCAL" "$OFFHOST_SERVICE_REMOTE" 0644
     copy_to_guest "$OFFHOST_TIMER_LOCAL" "$OFFHOST_TIMER_REMOTE" 0644
     copy_to_guest "$HEALTH_SERVICE_LOCAL" "$HEALTH_SERVICE_REMOTE" 0644
     copy_to_guest "$HEALTH_TIMER_LOCAL" "$HEALTH_TIMER_REMOTE" 0644
     copy_to_guest "$RESTORE_SERVICE_LOCAL" "$RESTORE_SERVICE_REMOTE" 0644
     copy_to_guest "$RESTORE_TIMER_LOCAL" "$RESTORE_TIMER_REMOTE" 0644
+    copy_to_guest "$UNIFI_SERVICE_LOCAL" "$UNIFI_SERVICE_REMOTE" 0644
+    copy_to_guest "$UNIFI_TIMER_LOCAL" "$UNIFI_TIMER_REMOTE" 0644
     enable_timers
     check_runtime
     ;;
