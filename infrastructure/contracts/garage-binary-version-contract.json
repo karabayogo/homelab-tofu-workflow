@@ -1,0 +1,16 @@
+{
+  "comment": "Garage binary version contract — single source of truth for the garage binary across all nodes. Enforced by scripts/enforce-garage-vm-bootstrap.sh (check + enforce modes); consumed by tofu module garage_version values in main.tf (must match the 'current' version here). RCA 2026-09-01: the binary was previously outside convergence scope, so versions drifted silently; this contract closes that gap. Rollback: each node keeps /usr/local/bin/garage.bak-<timestamp> after an upgrade; restore by reverting 'current' here and re-running --enforce.",
+  "binary_path": "/usr/local/bin/garage",
+  "download_url_template": "https://garagehq.deuxfleurs.fr/_releases/{version}/x86_64-unknown-linux-musl/garage",
+  "current": "v2.3.0",
+  "versions": {
+    "v2.2.0": {
+      "sha256": "ec761bb996e8453e86fe68ccc1cf222c73bb1ef05ae0b540bd4827e7d1931aab",
+      "notes": "Shipped 2026-01-24. Snapshot-worker leak loop (MDB_INCOMPATIBLE + skipped cleanup) RCA'd 2026-09-01."
+    },
+    "v2.3.0": {
+      "sha256": "f98d317942bb341151a2775162016bb50cf86b865d0108de03eb5db16e2120cd",
+      "notes": "Shipped 2026-04-16. No breaking changes from v2.2.0. Includes worker-liveness fixes (LifecycleWorker uncooperative #1396). Changelog has no explicit snapshot-cleanup fix, so regression check [24] (MDB leak-loop detector) remains the operative guard."
+    }
+  }
+}

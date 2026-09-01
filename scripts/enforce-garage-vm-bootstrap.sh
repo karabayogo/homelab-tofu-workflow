@@ -21,6 +21,11 @@ VM_SSH_KEY_PATH="${VM_SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}"
 VM_SSH_USER="${VM_SSH_USER:-root}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Garage binary version contract — the repo-owned source of truth for the
+# binary version/sha on all nodes (RCA 2026-09-01: the binary was outside
+# convergence scope, letting versions drift silently).
+GARAGE_VERSION_CONTRACT="${GARAGE_VERSION_CONTRACT:-$REPO_ROOT/infrastructure/contracts/garage-binary-version-contract.json}"
 TFVARS_PATH="${TFVARS_PATH:-$REPO_ROOT/infrastructure/terraform/terraform.tfvars}"
 TEMPLATE_PATH="${TEMPLATE_PATH:-$REPO_ROOT/infrastructure/terraform/modules/vm/templates/cloud-init-garage.yaml.tftpl}"
 MAINTF_PATH="${MAINTF_PATH:-$REPO_ROOT/infrastructure/terraform/main.tf}"
@@ -195,6 +200,7 @@ for module_name in sorted(modules):
             "name": mod["vm_name"],
             "vmid": int(mod["vm_id"]),
             "ip": mod["static_ip"],
+            "garage_version": mod["garage_version"],
             "files": files,
         }
     )
@@ -279,8 +285,11 @@ write_remote_file() {
   local perm="$4"
   local local_path="$5"
 
-  # Primary: direct SSH with stdin pipe
-  if cat "$local_path" | timeout 60 ssh "${VM_SSH_OPTS[@]/-n/}" "${VM_SSH_USER}@${ip}" \
+  # Primary: direct SSH with stdin pipe (filter -n out properly; an
+  # empty-string arg from "${arr[@]/-n/}" breaks ssh destination parsing)
+  local pipe_opts=()
+  for o in "${VM_SSH_OPTS[@]}"; do [ "$o" = "-n" ] || pipe_opts+=("$o"); done
+  if cat "$local_path" | timeout 60 ssh "${pipe_opts[@]}" "${VM_SSH_USER}@${ip}" \
     "set -euo pipefail; tmp=\$(mktemp); cat > \"\$tmp\"; install -m $perm \"\$tmp\" '$path'; rm -f \"\$tmp\"; echo wrote:$path" 2>/dev/null; then
     return 0
   fi
@@ -339,6 +348,143 @@ check_garage_admin_health() {
   return 1
 }
 
+# Enforce the garage binary version on one node, per the repo-owned version
+# contract (infrastructure/contracts/garage-binary-version-contract.json).
+# Flow: read current version -> compare with contract 'current' -> if match,
+# verify sha256 -> done. If mismatch: download to /tmp, verify sha, back up
+# the running binary, install, restart garage, verify. In --check mode this
+# only reports; in --enforce mode it converges. All node divergence between
+# versions is transitive — every node gets the same binary, so a rolling
+# upgrade converges one node per invocation. Rollback: restore
+# /usr/local/bin/garage.bak-<ts> (kept after upgrades).
+enforce_binary_version() {
+  local ip="$1" vmid="$2" name="$3" mode="$4"
+  local contract="$GARAGE_VERSION_CONTRACT"
+  local bin_path ver current_version ver_sha want_sha
+
+  if [ ! -f "$contract" ]; then
+    echo "FAIL garage binary version contract missing: $contract" >&2
+    return 1
+  fi
+  want_ver=$(jq -r '.current' "$contract")
+  want_sha=$(jq -r --arg v "$want_ver" '.versions[$v].sha256' "$contract")
+  bin_path=$(jq -r '.binary_path' "$contract")
+  if [ -z "$want_ver" ] || [ "$want_ver" = "null" ] || [ -z "$want_sha" ] || [ "$want_sha" = "null" ]; then
+    echo "FAIL version contract invalid (missing current/sha256 for $want_ver)" >&2
+    return 1
+  fi
+
+  current_version=$(vm_ssh_exec "$ip" "$bin_path --version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1")
+  if [ -z "$current_version" ]; then
+    # Fallback via qm guest exec (virtio-serial may be the only transport)
+    local json code
+    json=$(qm_exec_json "$vmid" 0 20 /bin/bash -lc "$bin_path --version 2>/dev/null | grep -oE 'v[0-9]+\\.[0-9]+\\.[0-9]+' | head -1" 2>/dev/null || echo '{}')
+    code=$(qm_exitcode "$json")
+    if [ "$code" = "0" ]; then
+      current_version=$(qm_stdout "$json" | tr -d '\r\n')
+    fi
+  fi
+  if [ -z "$current_version" ]; then
+    echo "FAIL cannot determine garage version on $name/$ip (management plane down?)" >&2
+    return 1
+  fi
+
+  if [ "$current_version" = "$want_ver" ]; then
+    # Version matches; verify integrity too
+    local live_sha
+    live_sha=$(vm_ssh_exec "$ip" "sha256sum $bin_path 2>/dev/null | awk '{print \$1}'")
+    if [ "$live_sha" != "$want_sha" ]; then
+      echo "FAIL garage binary sha mismatch on $name/$ip (have=${live_sha:-unknown} want=$want_sha)" >&2
+      return 1
+    fi
+    echo "PASS binary version $want_ver sha=$want_sha"
+    return 0
+  fi
+
+  if [ "$mode" = "--check" ]; then
+    echo "FAIL binary version drift on $name/$ip: have=$current_version want=$want_ver" >&2
+    return 1
+  fi
+
+  echo "ENFORCE binary upgrade $current_version -> $want_ver on $name/$ip"
+  local install_ok=0 ts=""
+  # Option 1: local pre-downloaded binary (GARAGE_LOCAL_BINARY) — used for
+  # nodes whose egress DNS is broken (e.g. wedged systemd-resolved) and for
+  # air-gapped segments. Must match the contract sha exactly.
+  if [ -n "${GARAGE_LOCAL_BINARY:-}" ] && [ -f "$GARAGE_LOCAL_BINARY" ]; then
+    local local_sha
+    local_sha=$(sha256sum "$GARAGE_LOCAL_BINARY" | awk '{print $1}')
+    if [ "$local_sha" != "$want_sha" ]; then
+      echo "FAIL GARAGE_LOCAL_BINARY sha mismatch: have=$local_sha want=$want_sha" >&2
+      return 1
+    fi
+    ts=$(date -u +%Y%m%dT%H%M%SZ)
+    # Build ssh opts WITHOUT -n properly — "${arr[@]/-n/}" leaves an
+    # empty-string arg that breaks ssh when no fallback exists.
+    local pipe_opts=()
+    for o in "${VM_SSH_OPTS[@]}"; do [ "$o" = "-n" ] || pipe_opts+=("$o"); done
+    if timeout 300 cat "$GARAGE_LOCAL_BINARY" | timeout 300 ssh "${pipe_opts[@]}" "${VM_SSH_USER}@${ip}" \
+      "set -euo pipefail; tmp=\$(mktemp); cat > \"\$tmp\"; got=\$(sha256sum \"\$tmp\" | awk '{print \$1}'); if [ \"\$got\" != \"$want_sha\" ]; then echo \"sha mismatch on node: got=\$got\" >&2; rm -f \"\$tmp\"; exit 42; fi; cp -a $bin_path $bin_path.bak-$ts; install -m 0755 \"\$tmp\" $bin_path; rm -f \"\$tmp\"; echo upgraded:$ts" 2>/dev/null; then
+      install_ok=1
+    else
+      echo "FAIL local-binary transfer failed on $name/$ip" >&2
+      return 1
+    fi
+  else
+  # Option 2: direct download on the node from the pinned release URL.
+  local url="https://garagehq.deuxfleurs.fr/_releases/${want_ver}/x86_64-unknown-linux-musl/garage"
+  local dl_script
+  dl_script=$(cat <<REMOTE
+set -euo pipefail
+tmp=\$(mktemp)
+curl -fsSL --retry 5 --retry-all-errors --connect-timeout 15 -o "\$tmp" "$url"
+got=\$(sha256sum "\$tmp" | awk '{print \$1}')
+if [ "\$got" != "$want_sha" ]; then
+  echo "downloaded sha mismatch: got=\$got want=$want_sha" >&2
+  rm -f "\$tmp"
+  exit 42
+fi
+ts=\$(date -u +%Y%m%dT%H%M%SZ)
+cp -a "$bin_path" "$bin_path.bak-\$ts"
+install -m 0755 "\$tmp" "$bin_path"
+rm -f "\$tmp"
+echo upgraded:\$ts
+REMOTE
+)
+  local dl_out
+  # NOTE: vm_ssh_exec wraps ssh in `timeout 30` — too short for a ~71MB
+  # binary download. Use a dedicated long-timeout ssh for the install step.
+  if ! dl_out=$(timeout 300 ssh "${VM_SSH_OPTS[@]}" "${VM_SSH_USER}@${ip}" "$dl_script" 2>/dev/null); then
+    echo "FAIL binary install failed on $name/$ip" >&2
+    return 1
+  fi
+  ts=$(printf '%s' "$dl_out" | grep -oE 'upgraded:[0-9TZ]+' | cut -d: -f2)
+  if [ -z "$ts" ]; then
+    echo "FAIL binary install output unreadable on $name/$ip: $dl_out" >&2
+    return 1
+  fi
+  install_ok=1
+  fi
+
+  # Restart and verify the new binary actually runs
+  if ! restart_and_verify_node "$ip" "$vmid" "$name"; then
+    echo "FAIL garage restart after binary upgrade on $name/$ip — ROLLING BACK" >&2
+    vm_ssh_exec "$ip" "cp -a $bin_path.bak-$ts $bin_path" || true
+    restart_and_verify_node "$ip" "$vmid" "$name" || true
+    return 1
+  fi
+
+  # Verify the running daemon now reports the contract version
+  local post_ver
+  post_ver=$(vm_ssh_exec "$ip" "$bin_path --version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1")
+  if [ "$post_ver" != "$want_ver" ]; then
+    echo "FAIL post-upgrade version still $post_ver on $name/$ip" >&2
+    return 1
+  fi
+  echo "PASS binary upgraded to $want_ver on $name/$ip (backup: $bin_path.bak-$ts)"
+  return 0
+}
+
 FAILURES=0
 while IFS= read -r node_b64; do
   [ -z "$node_b64" ] && continue
@@ -355,6 +501,11 @@ while IFS= read -r node_b64; do
     admin_healthy=true
   else
     echo "WARN garage admin API not responding on $ip:3903" >&2
+  fi
+
+  # Binary version convergence (repo-owned contract; RCA 2026-09-01).
+  if ! enforce_binary_version "$ip" "$vmid" "$name" "$MODE"; then
+    FAILURES=$((FAILURES + 1))
   fi
 
   changed=0

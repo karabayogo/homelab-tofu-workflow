@@ -767,7 +767,7 @@ module "garage_n1" {
   cloud_init_template = "garage"
 
   # Garage version (must match across all three nodes)
-  garage_version = "v2.2.0"
+  garage_version = "v2.3.0"
 
   # PLACEHOLDER values — replaced at boot via Vault AppRole (see cloud-init-garage.yaml.tftpl)
   # These placeholder strings are safe to commit to repo.
@@ -824,7 +824,7 @@ module "garage_n2" {
   k3s_enabled         = false
   cloud_init_template = "garage"
 
-  garage_version = "v2.2.0"
+  garage_version = "v2.3.0"
   rpc_secret     = "PLACEHOLDER_RPC_SECRET"
   admin_token    = "PLACEHOLDER_ADMIN_TOKEN"
 
@@ -871,7 +871,7 @@ module "garage_n3" {
   k3s_enabled         = false
   cloud_init_template = "garage"
 
-  garage_version = "v2.2.0"
+  garage_version = "v2.3.0"
   rpc_secret     = "PLACEHOLDER_RPC_SECRET"
   admin_token    = "PLACEHOLDER_ADMIN_TOKEN"
 
