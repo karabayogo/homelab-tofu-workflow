@@ -146,7 +146,9 @@ log "manager present — waiting for datastore bootstrap (mkfs/mount/datastore c
 deadline=$(( $(date +%s) + 300 ))
 ds="WAIT"
 while (( $(date +%s) < deadline )); do
-  ds="$(ssh_pve "qm guest exec ${DRILL_VM_ID} -- bash -lc 'findmnt -n -o SOURCE /srv/proxmox-backup-primary/datastore >/dev/null 2>&1 && echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data","").strip())' || echo WAIT)"
+  # The mountpoint is /srv/proxmox-backup-primary (the datastore dir below it
+  # is NOT a mount) — checking the subdir made this wait impossible to satisfy.
+  ds="$(ssh_pve "qm guest exec ${DRILL_VM_ID} -- bash -lc 'findmnt -n -o SOURCE /srv/proxmox-backup-primary >/dev/null 2>&1 && test -d /srv/proxmox-backup-primary/datastore && echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data","").strip())' || echo WAIT)"
   [[ "$ds" == "READY" ]] && break
   sleep 10
 done
