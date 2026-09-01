@@ -161,7 +161,14 @@ capture_pbs_state_manifest() {
 promote_staging_tree() {
   local staging="$1" final="$2" prev="$3"
   local ts trash
-  ts="$(date +%s)"
+  # Collision-proof trash name: nanosecond timestamp plus loop-until-free.
+  # A plain date +%s made two promote cycles in the same second nest the tree
+  # inside a retained .stale dir and abort the sync mid-promotion (caught by
+  # the 2026-09-02 rollover simulation; retained trash + same-second re-run).
+  ts="$(date +%s%N 2>/dev/null || date +%s)"
+  while [[ -e "${prev}.stale.${ts}" ]]; do
+    ts=$((ts + 1))
+  done
   if [[ -e "$prev" ]]; then
     trash="${prev}.stale.${ts}"
     mv "$prev" "$trash"
@@ -171,6 +178,28 @@ promote_staging_tree() {
     mv "$final" "$prev"
   fi
   mv "$staging" "$final"
+}
+
+prune_stale_rollover_dirs() {
+  local prev="$1" keep="${2:-2}"
+  local parent pattern
+  parent="$(dirname "$prev")"
+  pattern="$(basename "$prev").stale.*"
+
+  mapfile -t stale_dirs < <(
+    find "$parent" -maxdepth 1 -mindepth 1 -type d -name "$pattern" -printf '%T@\t%p\n' \
+      | sort -nr \
+      | cut -f2-
+  )
+
+  if (( ${#stale_dirs[@]} <= keep )); then
+    return 0
+  fi
+
+  for old in "${stale_dirs[@]:keep}"; do
+    echo "[INFO] Pruning stale rollover tree ${old}"
+    rm -rf -- "$old"
+  done
 }
 
 echo "[INFO] Syncing ${PVE_SSH_HOST}:/var/lib/vz/host-image -> ${HOST_ROOT_DEST}"
@@ -207,6 +236,15 @@ cp "$LATEST_STATE_FILE" "$PBS_CONFIG_STAGING/latest-state.txt"
 
 promote_staging_tree "$PBS_DATASTORE_STAGING" "$PBS_DATASTORE_DEST" "$PBS_DATASTORE_PREV"
 promote_staging_tree "$PBS_CONFIG_STAGING" "$PBS_CONFIG_DEST" "$PBS_CONFIG_PREV"
+# Rollback generations are load-bearing: datastore.prev / config.prev are the
+# guard against promoting a structurally-valid-but-corrupt upstream sync, and
+# .stale.* trees are older rollback generations. Never rm -rf prev after
+# promotion (that leaves zero rollback and defeats the rollover design);
+# bound disk usage instead by pruning .stale.* beyond keep=2.
+# 2026-09-02 RCA: deployed version never pruned .stale.* — one full curated
+# tree (~18 GiB) accumulated per day and drove the Synology share to 60%.
+prune_stale_rollover_dirs "$PBS_DATASTORE_PREV" 2
+prune_stale_rollover_dirs "$PBS_CONFIG_PREV" 2
 
 prune_verified_local_tree "$VM201_LOCAL_DIR" "$VM201_DEST"
 
