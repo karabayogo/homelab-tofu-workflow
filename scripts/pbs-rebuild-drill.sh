@@ -127,10 +127,13 @@ log "provisioning OS disk via repo vm-provisioner.sh (cattle rebuild path)"
 HOME="$HOME" bash "$TF_DIR/modules/vm/scripts/vm-provisioner.sh" \
   "$DRILL_VM_ID" "$DRILL_NAME" 13 debian "$PVE_HOST" "$SSH_KEY" true
 
-# ── Step 4: wait for cloud-init (PBS install takes minutes) ──
-log "waiting for cloud-init / PBS convergence on ${DRILL_NAME} (timeout 20m)"
+# ── Step 4: wait for FULL cloud-init convergence ──
+# 'proxmox-backup-manager exists' only proves the apt install finished; the
+# disk-setup and datastore bootstrap run after it. Wait for the actual
+# repo contract (agent, then contract script) instead of racing ahead.
+log "waiting for full cloud-init / PBS convergence on ${DRILL_NAME} (timeout 25m)"
 ready="WAIT"
-deadline=$(( $(date +%s) + 1200 ))
+deadline=$(( $(date +%s) + 1500 ))
 while (( $(date +%s) < deadline )); do
   if ssh_pve "qm guest exec ${DRILL_VM_ID} -- bash -lc 'command -v proxmox-backup-manager'" >/dev/null 2>&1; then
     ready="$(ssh_pve "qm guest exec ${DRILL_VM_ID} -- bash -lc 'command -v proxmox-backup-manager >/dev/null && echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data","").strip())' || echo WAIT)"
@@ -138,7 +141,17 @@ while (( $(date +%s) < deadline )); do
   fi
   sleep 20
 done
-[[ "$ready" == "READY" ]] || die "PBS did not converge within 20m (cloud-init failed or still running)"
+[[ "$ready" == "READY" ]] || die "PBS did not converge within 25m (cloud-init failed or still running)"
+log "manager present — waiting for datastore bootstrap (mkfs/mount/datastore create)"
+deadline=$(( $(date +%s) + 300 ))
+ds="WAIT"
+while (( $(date +%s) < deadline )); do
+  ds="$(ssh_pve "qm guest exec ${DRILL_VM_ID} -- bash -lc 'findmnt -n -o SOURCE /srv/proxmox-backup-primary/datastore >/dev/null 2>&1 && echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data","").strip())' || echo WAIT)"
+  [[ "$ds" == "READY" ]] && break
+  sleep 10
+done
+[[ "$ds" == "READY" ]] || die "datastore mount did not converge within 5m after manager install"
+log "datastore converged"
 
 # ── Step 5: run the FULL repo PBS contract against the drill VM ──
 log "running repo PBS contract against ${DRILL_NAME} (PBS_VM_ID=${DRILL_VM_ID})"

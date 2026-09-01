@@ -50,7 +50,17 @@ guest_exec() {
 
   printf -v quoted_cmd '%q' "$guest_cmd"
   raw_output="$(ssh_pve "qm guest exec ${PBS_VM_ID} -- bash -lc ${quoted_cmd}")"
-  printf '%s' "$raw_output" | python3 -c 'import json, sys; data = json.load(sys.stdin); sys.stdout.write(data.get("out-data", "")); raise SystemExit(data.get("exitcode", 1))'
+  # Surface remote stderr instead of discarding it: silent guest_exec failures
+  # cost real RCA time (2026-09-02 drill: a datastore-contract failure printed
+  # nothing because out-data/err-data were dropped on the floor).
+  printf '%s' "$raw_output" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+sys.stdout.write(data.get("out-data", ""))
+err = data.get("err-data", "") or ""
+if err.strip():
+    sys.stderr.write("[guest-stderr] " + err)
+sys.exit(data.get("exitcode", 1))'
 }
 
 copy_to_pve() {
