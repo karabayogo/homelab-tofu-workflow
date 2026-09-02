@@ -177,7 +177,9 @@ done
 deadline=$(( $(date +%s) + 600 ))
 healthy="WAIT"
 while (( $(date +%s) < deadline )); do
-  healthy="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 30 -- bash -lc 'systemctl is-system-running >/dev/null 2>&1 \&\& findmnt -n -o SOURCE /srv/proxmox-backup-primary >/dev/null 2>&1 \&\& echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data","").strip())' || echo WAIT)"
+  healthy="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 30 -- bash -lc 'findmnt -n -o SOURCE /srv/proxmox-backup-primary >/dev/null 2>&1 \&\& command -v proxmox-backup-manager >/dev/null \&\& echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("out-data","").strip())
+except Exception: print("WAIT")' || echo WAIT)"
   [[ "$healthy" == "READY" ]] && break
   sleep 15
 done
