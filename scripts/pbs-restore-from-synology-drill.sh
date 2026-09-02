@@ -137,6 +137,14 @@ while (( $(date +%s) < deadline )); do
 done
 [[ "$ds" == "READY" ]] || die "datastore mount did not converge"
 log "datastore converged"
+# Capture boot-1 uptime NOW (before cloud-init 'done'/reboot) as the reboot
+# baseline. cloud-init 'done' persists across the template's power_state
+# reboot, so a post-done check alone cannot tell which boot we're on.
+BOOT1_UPTIME="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 20 -- bash -lc 'cut -d. -f1 /proc/uptime'" 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("out-data","").strip())
+except Exception: print("")' || echo "")"
+[[ "$BOOT1_UPTIME" =~ ^[0-9]+$ ]] || BOOT1_UPTIME=""
+log "boot-1 uptime baseline: ${BOOT1_UPTIME:-unknown}"
 
 # ── Step 4b: wait out the template's post-cloud-init reboot ──
 # The PBS template reboots via cloud-init power_state after install. A
@@ -153,26 +161,27 @@ while (( $(date +%s) < deadline )); do
   sleep 15
 done
 [[ "$ci" == "READY" ]] || die "cloud-init never reached 'done'"
-log "waiting for post-install reboot to settle (uptime regression, then healthy)"
-prev_up=""
+log "waiting for post-install reboot to settle (vs boot-1 baseline)"
+# Reboot is confirmed the moment current uptime is BELOW the boot-1 baseline.
+# If cloud-init 'done' only registered on boot 2, uptime is already lower —
+# the very first reading satisfies the check. Either way this converges.
 deadline=$(( $(date +%s) + 900 ))
 rebooted="WAIT"
-while (( $(date +%s) < deadline )); do
-  cur="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 20 -- bash -lc 'cut -d. -f1 /proc/uptime'" 2>/dev/null | python3 -c 'import json,sys
+if [[ -n "$BOOT1_UPTIME" ]]; then
+  while (( $(date +%s) < deadline )); do
+    cur="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 20 -- bash -lc 'cut -d. -f1 /proc/uptime'" 2>/dev/null | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("out-data","").strip())
 except Exception: print("")' || echo "")"
-  if [[ "$cur" =~ ^[0-9]+$ ]]; then
-    # Reboot observed = uptime regressed vs the previous successful reading
-    if [[ -n "$prev_up" && "$cur" -lt "$prev_up" ]]; then
+    if [[ "$cur" =~ ^[0-9]+$ && "$cur" -lt "$BOOT1_UPTIME" ]]; then
       rebooted="READY"
       break
     fi
-    prev_up="$cur"
-  fi
-  # agent-down polls are slow (20s timeout); poll briskly when reachable
-  sleep 5
-done
-[[ "$rebooted" == "READY" ]] || die "post-install reboot not observed within 15m (uptime never regressed)"
+    sleep 5
+  done
+else
+  rebooted="READY"  # no baseline (agent blip); fall through to health check
+fi
+[[ "$rebooted" == "READY" ]] || die "post-install reboot not observed within 15m (uptime never regressed below baseline ${BOOT1_UPTIME})"
 deadline=$(( $(date +%s) + 600 ))
 healthy="WAIT"
 while (( $(date +%s) < deadline )); do

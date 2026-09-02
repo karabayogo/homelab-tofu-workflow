@@ -154,6 +154,11 @@ while (( $(date +%s) < deadline )); do
 done
 [[ "$ds" == "READY" ]] || die "datastore mount did not converge within 5m after manager install"
 log "datastore converged"
+BOOT1_UPTIME="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 20 -- bash -lc 'cut -d. -f1 /proc/uptime'" 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("out-data","").strip())
+except Exception: print("")' || echo "")"
+[[ "$BOOT1_UPTIME" =~ ^[0-9]+$ ]] || BOOT1_UPTIME=""
+log "boot-1 uptime baseline: ${BOOT1_UPTIME:-unknown}"
 
 # Wait out the template's post-cloud-init reboot before running contract
 # checks (they ride the guest agent, which dies during a reboot).
@@ -168,20 +173,20 @@ done
 [[ "$ci" == "READY" ]] || die "cloud-init never reached 'done'"
 deadline=$(( $(date +%s) + 900 ))
 rebooted="WAIT"
-prev_up=""
-while (( $(date +%s) < deadline )); do
-  cur="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 20 -- bash -lc 'cut -d. -f1 /proc/uptime'" 2>/dev/null | python3 -c 'import json,sys
+if [[ -n "$BOOT1_UPTIME" ]]; then
+  while (( $(date +%s) < deadline )); do
+    cur="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 20 -- bash -lc 'cut -d. -f1 /proc/uptime'" 2>/dev/null | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("out-data","").strip())
 except Exception: print("")' || echo "")"
-  if [[ "$cur" =~ ^[0-9]+$ ]]; then
-    if [[ -n "$prev_up" && "$cur" -lt "$prev_up" ]]; then
+    if [[ "$cur" =~ ^[0-9]+$ && "$cur" -lt "$BOOT1_UPTIME" ]]; then
       rebooted="READY"
       break
     fi
-    prev_up="$cur"
-  fi
-  sleep 5
-done
+    sleep 5
+  done
+else
+  rebooted="READY"
+fi
 [[ "$rebooted" == "READY" ]] || die "post-install reboot not observed within 15m"
 deadline=$(( $(date +%s) + 600 ))
 healthy="WAIT"
