@@ -153,15 +153,26 @@ while (( $(date +%s) < deadline )); do
   sleep 15
 done
 [[ "$ci" == "READY" ]] || die "cloud-init never reached 'done'"
-log "waiting for post-install reboot to settle (uptime < 120s, then healthy)"
+log "waiting for post-install reboot to settle (uptime regression, then healthy)"
+prev_up=""
 deadline=$(( $(date +%s) + 900 ))
 rebooted="WAIT"
 while (( $(date +%s) < deadline )); do
-  rebooted="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 30 -- bash -lc 'up=\$(cut -d. -f1 /proc/uptime); [ \"\$up\" -lt 120 ] && echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data","").strip())' || echo WAIT)"
-  [[ "$rebooted" == "READY" ]] && break
-  sleep 15
+  cur="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 20 -- bash -lc 'cut -d. -f1 /proc/uptime'" 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("out-data","").strip())
+except Exception: print("")' || echo "")"
+  if [[ "$cur" =~ ^[0-9]+$ ]]; then
+    # Reboot observed = uptime regressed vs the previous successful reading
+    if [[ -n "$prev_up" && "$cur" -lt "$prev_up" ]]; then
+      rebooted="READY"
+      break
+    fi
+    prev_up="$cur"
+  fi
+  # agent-down polls are slow (20s timeout); poll briskly when reachable
+  sleep 5
 done
-[[ "$rebooted" == "READY" ]] || die "post-install reboot not observed within 15m (uptime never dropped)"
+[[ "$rebooted" == "READY" ]] || die "post-install reboot not observed within 15m (uptime never regressed)"
 deadline=$(( $(date +%s) + 600 ))
 healthy="WAIT"
 while (( $(date +%s) < deadline )); do
