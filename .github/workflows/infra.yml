@@ -395,6 +395,14 @@ jobs:
       - name: Run tofu plan
         # -refresh=false avoids bpg/proxmox provider "Plugin did not respond"
         # hangs during ReadResource for rebuilt VMs.
+        # 2026-09-02 RCA: this job had TWO silent-failure bugs.
+        # (1) `tofu init -backend=false` left no initialized backend, so
+        #     `tofu plan` required re-init and exited 1 — the job only ever
+        #     "passed" by piggybacking on stale .terraform/ state left in the
+        #     runner workdir by other jobs (fragile pet coupling). Init with
+        #     the same backend config as the apply job instead.
+        # (2) `echo $?` after a pipeline captures tee's exit code, not tofu's
+        #     — drift was never actually detected. Use PIPESTATUS.
         id: plan
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.GARAGE_ACCESS_KEY }}
@@ -405,19 +413,36 @@ jobs:
           TF_VAR_vault_approle_secret_id: ${{ secrets.VAULT_APPROLE_SECRET_ID }}
           TF_VAR_vault_migration_approle_role_id: ${{ secrets.VAULT_MIGRATION_APPROLE_ROLE_ID }}
           TF_VAR_vault_migration_approle_secret_id: ${{ secrets.VAULT_MIGRATION_APPROLE_SECRET_ID }}
+          PROXMOX_API_TOKEN: ${{ secrets.PROXMOX_API_TOKEN }}
         run: |
           cd infrastructure/terraform
-          tofu init -backend=false 2>&1 | tail -5
+          cat > /tmp/tofu-backend.hcl <<EOF
+          endpoint   = "http://192.168.1.246:9000"
+          access_key = "${{ secrets.TOFU_BACKEND_ACCESS_KEY }}"
+          secret_key = "${{ secrets.TOFU_BACKEND_SECRET_KEY }}"
+          EOF
+          chmod 600 /tmp/tofu-backend.hcl
+          unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL_OVERRIDE
+          tofu init -reconfigure -backend-config=/tmp/tofu-backend.hcl 2>&1 | tail -3
+          set +e
           tofu plan -refresh=false -detailed-exitcode -lock=false 2>&1 | tee /tmp/plan_output.txt
-          echo "PLAN_EXIT=$?" >> $GITHUB_OUTPUT
+          RC=${PIPESTATUS[0]}
+          set -e
+          echo "PLAN_EXIT=$RC" >> $GITHUB_OUTPUT
+          if [ "$RC" -eq 2 ]; then
+            echo "::error::OpenTofu drift detected (plan exit 2) — see summary"
+            exit 2
+          elif [ "$RC" -ne 0 ]; then
+            echo "::error::tofu plan failed (exit $RC)"
+            exit "$RC"
+          fi
 
       - name: Post drift summary
         if: always()
         run: |
-          PLAN_EXIT=$(cat /tmp/plan_output.txt | tail -5)
           echo "## OpenTofu Drift Check" >> $GITHUB_STEP_SUMMARY
-          echo "Plan exit code: \${PLAN_EXIT##*:}" >> $GITHUB_STEP_SUMMARY
+          echo "Plan exit code: ${{ steps.plan.outputs.PLAN_EXIT }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          cat /tmp/plan_output.txt | tail -20 >> $GITHUB_STEP_SUMMARY
+          tail -20 /tmp/plan_output.txt >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
           echo '```' >> $GITHUB_STEP_SUMMARY

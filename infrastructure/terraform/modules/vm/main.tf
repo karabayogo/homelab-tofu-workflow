@@ -195,14 +195,19 @@ resource "proxmox_virtual_environment_vm" "this" {
 
   lifecycle {
     # Ignore imported/runtime-only drift that should not cause cattle churn.
-    # Keep this list restricted to attributes the provider still accepts here;
-    # provider-computed read-only fields like ipv4_addresses/ipv6_addresses/
-    # network_interface_names trigger redundant-ignore_changes warnings on 0.107.
+    # ipv4_addresses / ipv6_addresses / network_interface_names are
+    # provider-computed and legitimately differ on every plan ("known after
+    # apply"), so they MUST stay ignored — removing them (b8e9d49) traded a
+    # warning for permanent 6-resource false churn that buries real drift in
+    # every plan and drift-check (re-fixed 2026-09-02).
     ignore_changes = [
       initialization,
       keyboard_layout,
       agent[0].type,
       cpu[0].hotplugged,
+      ipv4_addresses,
+      ipv6_addresses,
+      network_interface_names,
     ]
 
   }
