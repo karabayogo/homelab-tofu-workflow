@@ -228,6 +228,15 @@ rsync -aH \
   -e "${RSYNC_SSH[*]}" \
   "${PBS_SSH_TARGET}:/srv/proxmox-backup-primary/datastore/" "${PBS_DATASTORE_STAGING}/"
 
+# Chunk manifest for orphan GC: --files-from only prunes directories rsync
+# walks, so chunks dropped from the curated set would otherwise accumulate
+# on the mirror forever (2026-09-02 RCA: .chunks had grown to 71G vs ~8G of
+# live payload). The manifest travels with the tree; promote_staging_tree
+# then GCs the promoted tree against it.
+awk '/^\.chunks\// { print }' "$INCLUDE_LIST" > "$PBS_DATASTORE_STAGING/.chunk-manifest.txt"
+chunk_total=$(wc -l < "$PBS_DATASTORE_STAGING/.chunk-manifest.txt")
+echo "[INFO] Chunk manifest written: ${chunk_total} live chunks"
+
 echo "[INFO] Syncing ${PBS_SSH_TARGET}:/etc/proxmox-backup -> ${PBS_CONFIG_STAGING}/etc-proxmox-backup"
 rsync -a --delete \
   -e "${RSYNC_SSH[*]}" \
@@ -245,6 +254,30 @@ promote_staging_tree "$PBS_CONFIG_STAGING" "$PBS_CONFIG_DEST" "$PBS_CONFIG_PREV"
 # tree (~18 GiB) accumulated per day and drove the Synology share to 60%.
 prune_stale_rollover_dirs "$PBS_DATASTORE_PREV" 2
 prune_stale_rollover_dirs "$PBS_CONFIG_PREV" 2
+
+# Orphan-chunk GC on the promoted tree (see manifest write above): remove any
+# chunk file NOT in the current curated manifest. Walk bottom-up so emptied
+# chunk-level dirs are removed too. prev-generation trees keep their own
+# (possibly older) chunks until their rollover prune — that is fine.
+MANIFEST="$PBS_DATASTORE_DEST/.chunk-manifest.txt"
+if [[ -s "$MANIFEST" ]]; then
+  removed=0
+  while IFS= read -r -d '' live_dir; do
+    rel_live="${live_dir#"$PBS_DATASTORE_DEST/"}"
+    while IFS= read -r -d '' chunk_file; do
+      rel_chunk="${chunk_file#"$PBS_DATASTORE_DEST/"}"
+      if ! grep -qxF "$rel_chunk" "$MANIFEST"; then
+        rm -f -- "$chunk_file"
+        removed=$((removed + 1))
+      fi
+    done < <(find "$live_dir" -maxdepth 1 -type f -print0)
+  done < <(find "$PBS_DATASTORE_DEST/.chunks" -mindepth 1 -maxdepth 1 -type d -print0)
+  # drop now-empty chunk subdirs
+  find "$PBS_DATASTORE_DEST/.chunks" -mindepth 1 -maxdepth 1 -type d -empty -delete
+  echo "[INFO] Orphan chunk GC: removed ${removed} chunks not in curated manifest"
+else
+  echo "[WARN] No chunk manifest in promoted tree — skipping orphan chunk GC"
+fi
 
 prune_verified_local_tree "$VM201_LOCAL_DIR" "$VM201_DEST"
 
