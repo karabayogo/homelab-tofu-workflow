@@ -24,6 +24,10 @@ users:
   - name: root
     ssh_authorized_keys:
       - ${ssh_pub_key}
+      # VM201's pve-backupsync identity: the off-host DR sync (VM201) pushes
+      # the Synology mirror into a rebuilt PBS datastore (restore drill /
+      # real DR). Declared here so the DR transport is Git-owned, not pet.
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID8Dx9PMbeACIlxe+b+0HbzEPnHa8XYacj2bNY+h+GFc pve-backupsync-vm201
   - name: ${admin_user}
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash

@@ -145,8 +145,10 @@ log "restoring curated mirror from Synology (via VM201) into drill datastore"
 ssh_pve "set -e
 # Synology lives under VM201's mount; use VM201 as the rsync pull source
 qm guest exec ${DRILL_VM_ID} --timeout 3000 -- bash -lc 'echo datastore-ready' >/dev/null"
-# Push from VM201 (which mounts Synology) to the drill VM over SSH
-PUSH_CMD="rsync -aH --info=progress2 -e 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' ${SYN_ROOT}/datastore/ root@${DRILL_IP}:/srv/proxmox-backup-primary/datastore/"
+# Push from VM201 (which mounts Synology) to the drill VM over SSH using
+# VM201's pve-backupsync identity (authorized on every PBS VM via the
+# Git-declared cloud-init template).
+PUSH_CMD="rsync -aH --info=progress2 -e 'ssh -i /home/moltbot/.ssh/pve-backupsync -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' ${SYN_ROOT}/datastore/ root@${DRILL_IP}:/srv/proxmox-backup-primary/datastore/"
 ssh_pve "qm guest exec 201 --timeout 7200 -- bash -lc \"mountpoint -q /mnt/synology/proxmoxbackups && ${PUSH_CMD} && echo MIRROR-PUSH-OK\"" > /tmp/restore-drill/push.json 2>/dev/null
 push_rc="$(python3 -c 'import json; print(json.load(open("/tmp/restore-drill/push.json")).get("exitcode", 1))')"
 [[ "$push_rc" == "0" ]] || die "mirror push failed (rc=${push_rc}) — see /tmp/restore-drill/push.json"
