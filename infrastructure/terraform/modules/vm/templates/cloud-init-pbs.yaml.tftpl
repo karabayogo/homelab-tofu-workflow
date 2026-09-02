@@ -15,6 +15,9 @@ packages:
   - apt-transport-https
   - ca-certificates
   - rsync
+  # proxmox-backup-client is needed for DR restore drills (pxar restore from
+  # a recovered datastore); pbs server packages alone do not ship it.
+  - proxmox-backup-client
 
 disable_root: false
 users:
