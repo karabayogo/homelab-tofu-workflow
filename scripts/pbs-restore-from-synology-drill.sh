@@ -138,6 +138,40 @@ done
 [[ "$ds" == "READY" ]] || die "datastore mount did not converge"
 log "datastore converged"
 
+# ── Step 4b: wait out the template's post-cloud-init reboot ──
+# The PBS template reboots via cloud-init power_state after install. A
+# datastore-mount check can pass on first boot while the reboot is imminent
+# (2026-09-02 restore-drill RCA: rsync connected exactly as the VM went down
+# — pam_nologin, broken pipe). Wait for: cloud-init done -> reboot (uptime
+# drop) -> system running with datastore mounted.
+log "waiting for cloud-init to finish first boot"
+deadline=$(( $(date +%s) + 900 ))
+ci="WAIT"
+while (( $(date +%s) < deadline )); do
+  ci="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 30 -- bash -lc 'cloud-init status 2>/dev/null | grep -q done && echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data","").strip())' || echo WAIT)"
+  [[ "$ci" == "READY" ]] && break
+  sleep 15
+done
+[[ "$ci" == "READY" ]] || die "cloud-init never reached 'done'"
+log "waiting for post-install reboot to settle (uptime < 120s, then healthy)"
+deadline=$(( $(date +%s) + 900 ))
+rebooted="WAIT"
+while (( $(date +%s) < deadline )); do
+  rebooted="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 30 -- bash -lc 'up=\$(cut -d. -f1 /proc/uptime); [ \"\$up\" -lt 120 ] && echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data","").strip())' || echo WAIT)"
+  [[ "$rebooted" == "READY" ]] && break
+  sleep 15
+done
+[[ "$rebooted" == "READY" ]] || die "post-install reboot not observed within 15m (uptime never dropped)"
+deadline=$(( $(date +%s) + 600 ))
+healthy="WAIT"
+while (( $(date +%s) < deadline )); do
+  healthy="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 30 -- bash -lc 'systemctl is-system-running >/dev/null 2>&1 \&\& findmnt -n -o SOURCE /srv/proxmox-backup-primary >/dev/null 2>&1 \&\& echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data","").strip())' || echo WAIT)"
+  [[ "$healthy" == "READY" ]] && break
+  sleep 15
+done
+[[ "$healthy" == "READY" ]] || die "system did not come back healthy with datastore mounted after reboot"
+log "post-reboot settled — datastore mounted on a clean boot"
+
 # ── Step 5: recover the datastore from the Synology mirror ONLY ──
 # The drill VM has no route to the live PBS (.247 route is unnecessary; the
 # curated mirror is the sole source). rsync pushes mirror -> drill datastore.

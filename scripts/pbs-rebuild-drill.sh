@@ -155,6 +155,35 @@ done
 [[ "$ds" == "READY" ]] || die "datastore mount did not converge within 5m after manager install"
 log "datastore converged"
 
+# Wait out the template's post-cloud-init reboot before running contract
+# checks (they ride the guest agent, which dies during a reboot).
+log "waiting for cloud-init done + post-install reboot to settle"
+deadline=$(( $(date +%s) + 900 ))
+ci="WAIT"
+while (( $(date +%s) < deadline )); do
+  ci="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 30 -- bash -lc 'cloud-init status 2>/dev/null | grep -q done && echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data","").strip())' || echo WAIT)"
+  [[ "$ci" == "READY" ]] && break
+  sleep 15
+done
+[[ "$ci" == "READY" ]] || die "cloud-init never reached 'done'"
+deadline=$(( $(date +%s) + 900 ))
+rebooted="WAIT"
+while (( $(date +%s) < deadline )); do
+  rebooted="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 30 -- bash -lc 'up=\$(cut -d. -f1 /proc/uptime); [ \"\$up\" -lt 120 ] && echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data","").strip())' || echo WAIT)"
+  [[ "$rebooted" == "READY" ]] && break
+  sleep 15
+done
+[[ "$rebooted" == "READY" ]] || die "post-install reboot not observed within 15m"
+deadline=$(( $(date +%s) + 600 ))
+healthy="WAIT"
+while (( $(date +%s) < deadline )); do
+  healthy="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 30 -- bash -lc 'systemctl is-system-running >/dev/null 2>&1 \&\& findmnt -n -o SOURCE /srv/proxmox-backup-primary >/dev/null 2>&1 \&\& echo READY || echo WAIT'" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data","").strip())' || echo WAIT)"
+  [[ "$healthy" == "READY" ]] && break
+  sleep 15
+done
+[[ "$healthy" == "READY" ]] || die "system did not come back healthy after reboot"
+log "post-reboot settled"
+
 # ── Step 5: run the FULL repo PBS contract against the drill VM ──
 log "running repo PBS contract against ${DRILL_NAME} (PBS_VM_ID=${DRILL_VM_ID})"
 PBS_VM_ID="$DRILL_VM_ID" bash "$SCRIPT_DIR/enforce-pve-host-backup-stack.sh" --check
