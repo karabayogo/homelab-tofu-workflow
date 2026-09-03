@@ -34,6 +34,17 @@ jobs:
           grep -q "path: /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml" "$MASTER"
           grep -q "path: /var/lib/rancher/k3s/server/manifests/kube-vip.yaml" "$MASTER"
 
+          # 2026-09-03 RCA boot-pin contract: GRUB must boot saved-default and
+          # unattended upgrades must never reboot k3s nodes. Non-removable —
+          # removing these reintroduces silent kernel jumps on unplanned reboots.
+          for tmpl in "$MASTER" "$WORKER"; do
+            grep -q "path: /etc/apt/apt.conf.d/98k8s-kernel-policy" "$tmpl"
+            grep -q "Automatic-Reboot \"false\"" "$tmpl"
+            grep -q "path: /etc/needrestart/conf.d/98-k8s-cattle.conf" "$tmpl"
+            grep -q "path: /etc/default/grub.d/98-k8s-boot-pin.cfg" "$tmpl"
+            grep -q "GRUB_DEFAULT=saved" "$tmpl"
+          done
+
           if grep -R -n "cat > /etc/rancher/k3s/config.yaml <<'EOF'\|cat > /var/lib/rancher/k3s/server/manifests/kube-vip" infrastructure/terraform/modules/vm/templates; then
             echo "::error::k3s cloud-init templates must not render shell heredocs for k3s/kube-vip files; use write_files instead"
             exit 1
