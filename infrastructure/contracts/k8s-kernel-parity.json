@@ -1,0 +1,48 @@
+{
+  "purpose": "Kernel parity + uncoordinated-reboot prevention for k3s cattle nodes (2026-09-03 RCA: apt upgraded userspace at 06:31Z, needrestart daemon-reexec churn, node hard-rebooted 06:33Z into kernel 6.8.0-138 that had been installed-but-idle since Aug-20; engine wedge + 14.5h blind spot followed).",
+  "policy": {
+    "auto_reboot": "false",
+    "unattended_upgrades": "security-only",
+    "grub_boot_target": "saved-default",
+    "saved_default_pinned_to": "running kernel at provision/enforce time",
+    "maintenance_window_aest": "Sunday 05:00",
+    "maintenance_window_utc": "Saturday 19:00"
+  },
+  "nodes": {
+    "k8s-master1": {
+      "ip": "192.168.1.201",
+      "role": "server",
+      "contract_kernel": "6.8.0-137-generic",
+      "kernel_source": "saved-default (pin to running; manual jump per maintenance window)"
+    },
+    "k8s-master2": {
+      "ip": "192.168.1.202",
+      "role": "server",
+      "contract_kernel": "6.8.0-137-generic",
+      "kernel_source": "saved-default (pin to running; manual jump per maintenance window)"
+    },
+    "k8s-master3": {
+      "ip": "192.168.1.203",
+      "role": "server",
+      "contract_kernel": "6.8.0-137-generic",
+      "kernel_source": "saved-default (pin to running; manual jump per maintenance window)"
+    },
+    "k8s-worker1": {
+      "ip": "192.168.1.204",
+      "role": "agent",
+      "contract_kernel": "6.8.0-138-generic",
+      "kernel_source": "saved-default (running kernel after planned 2026-09-03 maintenance reboot)"
+    },
+    "k8s-worker2": {
+      "ip": "192.168.1.205",
+      "role": "agent",
+      "contract_kernel": "6.8.0-138-generic",
+      "kernel_source": "saved-default"
+    }
+  },
+  "drift_policy": {
+    "any_deviation": "fail --check (page via fiefdom gate)",
+    "auto_converge": "never dispatch reboot on its own; maintenance window script reboots ONE node at a time with cordon+drain+volume-health gates",
+    "unattended_boot_change": "categorical alarm — GRUB must boot saved-default, not newest"
+  }
+}
