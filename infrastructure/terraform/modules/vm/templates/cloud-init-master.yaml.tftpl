@@ -27,6 +27,36 @@ write_files:
       net.bridge.bridge-nf-call-ip6tables = 1
       net.ipv4.ip_forward = 1
 
+  # === START K8s kernel parity / no silent kernel jump (RCA 2026-09-03) ===
+  # Unattended upgrades must NOT reboot k3s nodes, and needrestart must only
+  # report pending restarts (k8s-managed containers own their restarts).
+  - path: /etc/apt/apt.conf.d/98k8s-kernel-policy
+    permissions: '0644'
+    content: |
+      // GitOps cattle kernel policy — managed by homelab-tofu-workflow
+      // (enforce-k8s-kernel-parity.sh). DO NOT EDIT ON NODE.
+      Unattended-Upgrade::Automatic-Reboot "false";
+      Unattended-Upgrade::Remove-Unused-Dependencies "false";
+
+  - path: /etc/needrestart/conf.d/98-k8s-cattle.conf
+    permissions: '0644'
+    content: |
+      // k8s cattle: never auto-restart services during apt runs.
+      // Containerized workloads restart via k8s controllers, not needrestart.
+      $nrconf{restart} = 'l';
+      $nrconf{kernelhints} = -1;
+
+  # GRUB must boot the LAST-BOOTED kernel (saved), never "newest installed".
+  # GRUB_DEFAULT=0 means an uncoordinated reboot silently jumps to a kernel
+  # that was installed weeks earlier (2026-09-03: node rebooted into idle
+  # 6.8.0-138 from Aug-20 and the version jump wedged Longhorn engines).
+  - path: /etc/default/grub.d/98-k8s-boot-pin.cfg
+    permissions: '0644'
+    content: |
+      GRUB_DEFAULT=saved
+      GRUB_SAVEDEFAULT=true
+  # === END K8s kernel parity ===
+
   # CoreDNS upstream contract: masters must never forward DNS back into the
   # cluster DNS IP, or CoreDNS loops into itself after a reboot.
   - path: /etc/rancher/k3s/resolv.conf

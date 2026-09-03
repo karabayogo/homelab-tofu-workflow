@@ -195,6 +195,49 @@ jobs:
           test -f "$SCRIPT_PATH"
           bash "$SCRIPT_PATH" --enforce
 
+  k8s-kernel-parity-contract:
+    needs: tofu
+    if: needs.tofu.result == 'success'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            infrastructure
+            scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Write node SSH key
+        run: |
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
+          chmod 600 "$HOME/.ssh/pve-kai"
+
+      # 2026-09-03 RCA: uncoordinated node reboot + silent GRUB kernel jump
+      # (GRUB_DEFAULT=0 booted idle 6.8.0-138) wedged Longhorn engines for
+      # 14.5h. The parity contract pins: no unattended auto-reboot, needrestart
+      # list-only, GRUB saved-default, running kernel == Git contract.
+      - name: Verify k8s kernel parity contract on PRs
+        if: github.event_name == 'pull_request'
+        env:
+          VM_SSH_KEY_PATH: "$HOME/.ssh/pve-kai"
+          LIVE_CHECK: "0"
+        run: |
+          SCRIPT_PATH="scripts/enforce-k8s-kernel-parity.sh"
+          test -f "$SCRIPT_PATH"
+          bash "$SCRIPT_PATH" --check
+
+      - name: Enforce k8s kernel parity contract on live nodes
+        if: github.event_name != 'pull_request'
+        env:
+          VM_SSH_KEY_PATH: "$HOME/.ssh/pve-kai"
+        run: |
+          SCRIPT_PATH="scripts/enforce-k8s-kernel-parity.sh"
+          test -f "$SCRIPT_PATH"
+          bash "$SCRIPT_PATH" --enforce
+
   garage-vm-bootstrap-reconcile:
     needs: tofu
     if: needs.tofu.result == 'success'
