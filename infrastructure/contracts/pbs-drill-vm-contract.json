@@ -3,8 +3,8 @@
   "name": "pbs-restore-drill",
   "ip": "192.168.1.248",
   "memory_mb": 2048,
-  "max_age_minutes": 240,
-  "data_disk_gb": 20,
+  "max_age_minutes": 480,
+  "data_disk_gb": 0,
   "snippet": "local:snippets/cloudinit-pbs-restore-drill.yaml",
-  "reason": "Ephemeral PBS drill VM (pbs-rebuild-drill.sh / pbs-restore-from-synology-drill.sh). Stamped from Git, verified, then destroyed. 2026-09-04 RCA: a manual restore-from-synology drill run on 2026-09-02 21:11 AEST left this VM running idle for 40h; its 2048 MiB was not counted in the PVE memory budget, pushing the single host past its declared headroom and firing the Aug 03 stall-signature watchdog. This contract makes the drill reservation a first-class budget line and gives the watchdog a max-age stale check so a forgotten drill VM is paged, not silently tolerated. Destroy stale instances with: qm stop 907 --timeout 30 && qm destroy 907 --purge && rm -f /var/lib/vz/snippets/cloudinit-pbs-restore-drill.yaml"
+  "reason": "Ephemeral PBS drill VM (pbs-rebuild-drill.sh / pbs-restore-from-synology-drill.sh). Stamped from Git, verified, then destroyed. 2026-09-04 RCA: a manual restore-from-synology drill run on 2026-09-02 21:11 AEST left this VM running idle for 40h; its 2048 MiB was not counted in the PVE memory budget, pushing the single host past its declared headroom and firing the Aug 03 stall-signature watchdog. This contract makes the drill reservation a first-class budget line and gives the watchdog a max-age stale check so a forgotten drill VM is paged, not silently tolerated. max_age_minutes=480 (raised from 240 the same day): a legitimate restore drill runs ~4.5h (72 GiB mirror push + integrity walk + pxar restore), so 240 would false-page mid-drill; 480 still catches day-scale leaks (the 40h case) with 3h+ slack over the 5h GHA job timeout. data_disk_gb=0 = auto-sized by the script from the live Synology mirror (Sep-02 default of 20 GiB was 3.5x too small for the 71.5 GiB mirror). Destroy stale instances with: qm stop 907 --timeout 30 && qm destroy 907 --purge && rm -f /var/lib/vz/snippets/cloudinit-pbs-restore-drill.yaml"
 }

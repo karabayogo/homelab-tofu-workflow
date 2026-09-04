@@ -44,6 +44,24 @@ TOFU="${TOFU:-$HOME/.local/bin/tofu}"
 SNIPPET_REMOTE="local:snippets/cloudinit-${DRILL_NAME}.yaml"
 SNIPPET_PATH="/var/lib/vz/snippets/cloudinit-${DRILL_NAME}.yaml"
 
+# ── Step 0: mirror preflight + data-disk auto-sizing (2026-09-04) ──
+# The Synology mirror is the DR source of truth — fail fast BEFORE the
+# ~4.5h run if a required snapshot group is missing, and size the drill's
+# data disk from the live mirror so a hardcoded constant can never overflow
+# or drift (the script default of 20 GiB was 3.5x too small for the actual
+# 71.5 GiB mirror — the Sep-02 manual run only worked because it passed
+# DRILL_DATA_DISK_GB=100 by hand).
+for group in host/pve-config vm/201 vm/300 vm/906; do
+  n_snap="$(ls -d "${SYN_ROOT}/datastore/${group}"/*/ 2>/dev/null | wc -l)"
+  [[ "${n_snap:-0}" -ge 1 ]] || die "Synology mirror missing snapshots for group '${group}' (SYN_ROOT=${SYN_ROOT}) — refusing to run a doomed 4.5h drill"
+done
+mirror_gb="$(du -s "${SYN_ROOT}/datastore" 2>/dev/null | awk '{printf "%d", ($1 * 1.25) / 1048576 + 1}')"
+mirror_gb="${mirror_gb:-0}"
+if [ "$mirror_gb" -gt 0 ] && [ "$mirror_gb" -gt "$DRILL_DATA_DISK_GB" ]; then
+  log "auto-sizing data disk ${DRILL_DATA_DISK_GB} -> ${mirror_gb} GiB (live mirror ${mirror_gb} GiB incl 25% margin)"
+  DRILL_DATA_DISK_GB="$mirror_gb"
+fi
+
 ssh_pve() { ssh "${SSH_OPTS[@]}" "$PVE_TARGET" "$@"; }
 log() { echo "[restore-drill] $*"; }
 die() { echo "[restore-drill][ERROR] $*" >&2; exit 1; }
@@ -54,8 +72,10 @@ cleanup_on_failure() {
 }
 trap cleanup_on_failure ERR
 
-exec 9>/tmp/pbs-restore-drill.lock
-flock -n 9 || die "another drill is already running"
+exec 9>/tmp/pbs-drill.lock
+flock -n 9 || die "another drill (rebuild or restore) is already running"
+# 2026-09-04: shared lock across BOTH drill scripts — rebuild and restore
+# both stamp VM 907/.248; mutual exclusion by name-guard alone was fragile.
 
 # ── Safety: never run against anything that is not a drill VM ──
 existing_name="$(ssh_pve "qm config ${DRILL_VM_ID} 2>/dev/null | awk '/^name:/{print \$2}'" || true)"

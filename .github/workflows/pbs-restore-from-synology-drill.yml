@@ -1,0 +1,84 @@
+name: PBS Restore-from-Synology Drill
+
+# DR-endpoint proof: a fresh PBS built ONLY from Git, with zero access to
+# the live PBS datastore, recovers a restorable datastore from the Synology
+# off-host mirror and restores a real pxar archive from it, then destroys
+# the drill VM. "Backups you have never restored are just hopes."
+#
+# 2026-09-04: this drill previously ran only manually, and a manual run on
+# 2026-09-02 21:11 AEST left the drilled VM (907) running idle for 40h —
+# undeclared in the PVE memory budget, it overcommitted the host and fired
+# the Aug 03 stall-signature watchdog. Now:
+#   - scheduled monthly (first Sunday 22:30 UTC = first Mon 08:30 AEST) —
+#     the drill pushes the full ~72 GiB Synology mirror (~4.5h), so weekly
+#     would saturate the single LAN runner+network; monthly matches the
+#     precedent of scripts/backup-restore-drill.timer.
+#   - runs as a repo-owned workflow like pbs-rebuild-drill.yml (workflow
+#     concurrency group + shared /tmp/pbs-drill.lock across both scripts —
+#     rebuild and restore both stamp VM 907/.248, so they must never run
+#     concurrently).
+#   - preflight refuses only when VM 907 exists as a NON-drill VM; a stale
+#     pbs-restore-drill instance is reclaimable (the script's own re-entry
+#     destroys it), so a leaked drill self-heals instead of blocking the
+#     schedule forever.
+#   - a leaked/stale VM is additionally caught by proxmox-heartbeat-watchdog
+#     after max_age_minutes (480) via pbs-drill-vm-contract.json.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # First Sunday 22:30 UTC (= first Monday 08:30 AEST; AEST=UTC+10)
+    - cron: '30 22 1-7 * 0'
+
+concurrency:
+  group: pbs-restore-drill
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    runs-on: self-hosted
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Preflight — drill VMID reclaimed/free, drill IP free, PVE reachable
+        run: |
+          set -e
+          SSH="ssh -i ~/.ssh/pve-kai -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@192.168.1.50"
+          if $SSH 'qm config 907 >/dev/null 2>&1'; then
+            NAME="$($SSH 'qm config 907 | awk "/^name:/{print \$2}"')"
+            if [ "$NAME" = "pbs-restore-drill" ]; then
+              echo "[OK] VM 907 exists as stale pbs-restore-drill — script re-entry will destroy and rebuild it"
+            else
+              echo "::error::VM 907 exists as '$NAME' (not a drill VM) — refusing to touch it"
+              exit 1
+            fi
+          else
+            if $SSH 'ping -c1 -W1 192.168.1.248 >/dev/null 2>&1'; then
+              echo "::error::192.168.1.248 (drill IP) is in use by a non-drill host — aborting"
+              exit 1
+            fi
+            echo "[OK] VM 907 free, drill IP free"
+          fi
+
+      - name: Preflight — Synology off-host mirror reachable with all required groups
+        run: |
+          set -e
+          MIRROR="/mnt/synology/proxmoxbackups/homelab_backups/pve/pbs-primary/datastore"
+          mountpoint -q /mnt/synology/proxmoxbackups || {
+            echo "::error::Synology share not mounted on runner (/mnt/synology/proxmoxbackups) — aborting"
+            exit 1
+          }
+          for g in host/pve-config vm/201 vm/300 vm/906; do
+            n="$(ls -d "$MIRROR/$g"/*/ 2>/dev/null | wc -l)"
+            [ "$n" -ge 1 ] || {
+              echo "::error::mirror missing snapshot group $g — the drill would run ~4.5h and fail"
+              exit 1
+            }
+          done
+          SZ="$(du -s "$MIRROR" 2>/dev/null | awk '{printf "%.1f", $1/1048576}')"
+          echo "[OK] Synology mirror present: ${SZ} GiB, all 4 groups, latest host/pve-config: $(ls "$MIRROR/host/pve-config/" | tail -1)"
+
+      - name: Run restore-from-Synology drill (auto-destroy on completion)
+        run: bash scripts/pbs-restore-from-synology-drill.sh

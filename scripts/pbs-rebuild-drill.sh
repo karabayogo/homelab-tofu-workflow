@@ -54,8 +54,10 @@ cleanup_on_failure() {
 }
 trap cleanup_on_failure ERR
 
-exec 9>/tmp/pbs-rebuild-drill.lock
-flock -n 9 || die "another drill is already running"
+exec 9>/tmp/pbs-drill.lock
+flock -n 9 || die "another drill (rebuild or restore) is already running"
+# 2026-09-04: shared lock across BOTH drill scripts — rebuild and restore
+# both stamp VM 907/.248; mutual exclusion by name-guard alone was fragile.
 
 # ── Safety: never run against anything that is not a drill VM ──
 existing_name="$(ssh_pve "qm config ${DRILL_VM_ID} 2>/dev/null | awk '/^name:/{print \$2}'" || true)"
