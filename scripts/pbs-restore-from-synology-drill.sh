@@ -44,6 +44,10 @@ TOFU="${TOFU:-$HOME/.local/bin/tofu}"
 SNIPPET_REMOTE="local:snippets/cloudinit-${DRILL_NAME}.yaml"
 SNIPPET_PATH="/var/lib/vz/snippets/cloudinit-${DRILL_NAME}.yaml"
 
+ssh_pve() { ssh "${SSH_OPTS[@]}" "$PVE_TARGET" "$@"; }
+log() { echo "[restore-drill] $*"; }
+die() { echo "[restore-drill][ERROR] $*" >&2; exit 1; }
+
 # ── Step 0: mirror preflight + data-disk auto-sizing (2026-09-04) ──
 # The Synology mirror is the DR source of truth — fail fast BEFORE the
 # ~4.5h run if a required snapshot group is missing, and size the drill's
@@ -51,6 +55,9 @@ SNIPPET_PATH="/var/lib/vz/snippets/cloudinit-${DRILL_NAME}.yaml"
 # or drift (the script default of 20 GiB was 3.5x too small for the actual
 # 71.5 GiB mirror — the Sep-02 manual run only worked because it passed
 # DRILL_DATA_DISK_GB=100 by hand).
+# NOTE: lives AFTER log()/die() definitions — bash resolves functions at
+# call time; the first GHA dispatch died with "log: command not found"
+# (exit 127) because this block was originally inserted above them.
 for group in host/pve-config vm/201 vm/300 vm/906; do
   n_snap="$(ls -d "${SYN_ROOT}/datastore/${group}"/*/ 2>/dev/null | wc -l)"
   [[ "${n_snap:-0}" -ge 1 ]] || die "Synology mirror missing snapshots for group '${group}' (SYN_ROOT=${SYN_ROOT}) — refusing to run a doomed 4.5h drill"
@@ -61,10 +68,6 @@ if [ "$mirror_gb" -gt 0 ] && [ "$mirror_gb" -gt "$DRILL_DATA_DISK_GB" ]; then
   log "auto-sizing data disk ${DRILL_DATA_DISK_GB} -> ${mirror_gb} GiB (live mirror ${mirror_gb} GiB incl 25% margin)"
   DRILL_DATA_DISK_GB="$mirror_gb"
 fi
-
-ssh_pve() { ssh "${SSH_OPTS[@]}" "$PVE_TARGET" "$@"; }
-log() { echo "[restore-drill] $*"; }
-die() { echo "[restore-drill][ERROR] $*" >&2; exit 1; }
 
 cleanup_on_failure() {
   log "FAILURE — cleaning up drill VM ${DRILL_VM_ID} (live PBS untouched)"

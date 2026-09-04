@@ -316,6 +316,20 @@ jobs:
           echo "${{ secrets.PVE_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/pve-kai"
           chmod 600 "$HOME/.ssh/pve-kai"
 
+      - name: Validate drill scripts — syntax + helper def-before-use
+        # 2026-09-04: the first GHA dispatch of the restore-from-Synology
+        # drill died with "log: command not found" (exit 127) — a Step-0
+        # block called log()/die() before their definitions. bash -n does
+        # NOT catch this class (functions resolve at call time). This gate
+        # fails any edit that uses a helper before its definition line.
+        run: |
+          set -euo pipefail
+          for s in scripts/pbs-rebuild-drill.sh scripts/pbs-restore-from-synology-drill.sh; do
+            test -f "$s"
+            bash -n "$s"
+            python3 scripts/drill-scripts-def-before-use-gate.py "$s"
+          done
+
       - name: Verify PVE host storage contracts on PRs
         if: github.event_name == 'pull_request'
         run: |
