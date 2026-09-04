@@ -451,6 +451,28 @@ jobs:
         #     the same backend config as the apply job instead.
         # (2) `echo $?` after a pipeline captures tee's exit code, not tofu's
         #     — drift was never actually detected. Use PIPESTATUS.
+        # 2026-09-04 RCA (fiefdom-daily-health-gate paged nightly Sep 3-4):
+        # the plan var surface DIVERGED from the apply job (tofu.yml), so the
+        # nightly scheduled drift-check was red for two different reasons:
+        #   - proxmox_api_token was never passed. provider.tf reads
+        #     var.proxmox_api_token; the apply/plan jobs pass it via
+        #     -var="proxmox_api_token=...". An env var named PROXMOX_API_TOKEN
+        #     is NEVER read by the bpg/proxmox provider — it was dead weight.
+        #     Result: "Unable to create Proxmox VE API credentials — must
+        #     provide either username and password, an API token, or a
+        #     ticket" (exit 1) on every schedule run since the 09-02 fix made
+        #     this job actually plan.
+        #   - TF_VAR_state_backend_access_key / _secret_key and K3S_TOKEN were
+        #     missing (apply sets them). Those variables default to "" in
+        #     variables.tf, so the tofu-state1 cloud-init snippet (S3 keys)
+        #     and the k3s master/worker cloud-init snippets (join token)
+        #     rendered with EMPTY values -> phantom "must be replaced" drift
+        #     (exit 2) even after credentials were fixed. Verified: plan with
+        #     the apply-job var surface yields exit 0 "No changes".
+        # RULE: the drift-check plan MUST be given the identical var surface
+        # as the apply job (same secrets, same -var flags) — or the two plans
+        # diverge by construction. The guard below fails fast when any
+        # required var is missing so divergence can never silently recur.
         id: plan
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.GARAGE_ACCESS_KEY }}
@@ -461,9 +483,21 @@ jobs:
           TF_VAR_vault_approle_secret_id: ${{ secrets.VAULT_APPROLE_SECRET_ID }}
           TF_VAR_vault_migration_approle_role_id: ${{ secrets.VAULT_MIGRATION_APPROLE_ROLE_ID }}
           TF_VAR_vault_migration_approle_secret_id: ${{ secrets.VAULT_MIGRATION_APPROLE_SECRET_ID }}
-          PROXMOX_API_TOKEN: ${{ secrets.PROXMOX_API_TOKEN }}
+          TF_VAR_state_backend_access_key: ${{ secrets.TOFU_BACKEND_ACCESS_KEY }}
+          TF_VAR_state_backend_secret_key: ${{ secrets.TOFU_BACKEND_SECRET_KEY }}
+          K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
         run: |
           cd infrastructure/terraform
+          # Fail-fast guard (2026-09-04 RCA): every required var must be
+          # present BEFORE planning. Missing vars previously rendered empty
+          # cloud-init snippets (phantom drift) or provider-credential
+          # errors; both silently turned the nightly drift-check red.
+          for v in K3S_TOKEN TF_VAR_state_backend_access_key TF_VAR_state_backend_secret_key; do
+            if [ -z "${!v:-}" ]; then
+              echo "::error::drift-check: required variable $v is empty (apply-job var-parity contract)" >&2
+              exit 1
+            fi
+          done
           cat > /tmp/tofu-backend.hcl <<EOF
           endpoint   = "http://192.168.1.246:9000"
           access_key = "${{ secrets.TOFU_BACKEND_ACCESS_KEY }}"
@@ -473,7 +507,9 @@ jobs:
           unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL_OVERRIDE
           tofu init -reconfigure -backend-config=/tmp/tofu-backend.hcl 2>&1 | tail -3
           set +e
-          tofu plan -refresh=false -detailed-exitcode -lock=false 2>&1 | tee /tmp/plan_output.txt
+          tofu plan -refresh=false -detailed-exitcode -lock=false \
+            -var="proxmox_api_token=${{ secrets.PROXMOX_API_TOKEN }}" \
+            -var="k3s_token=${K3S_TOKEN}" 2>&1 | tee /tmp/plan_output.txt
           RC=${PIPESTATUS[0]}
           set -e
           echo "PLAN_EXIT=$RC" >> $GITHUB_OUTPUT
