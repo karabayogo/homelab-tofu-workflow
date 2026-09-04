@@ -2,9 +2,9 @@
   "vms": {
     "201": {
       "name": "moltbot-ubuntu-server-lts",
-      "memory_mb": 12288,
+      "memory_mb": 10240,
       "allow_automated_reboot": false,
-      "reason": "Hosts Hermes/OpenClaw plus the self-hosted runners. Config drift can be repaired automatically, but memory shrink still requires a coordinated reboot of the active automation VM."
+      "reason": "Hosts Hermes/OpenClaw plus the self-hosted runners. Right-sized 12288 -> 10240 on 2026-09-04 to fund the pbs-restore-drill budget slot: observed guest usage ~5.9 GiB of 12 GiB, leaving ~4 GiB guest headroom at 10 GiB. Live qm config stays 12288 until a coordinated reboot of the active automation VM (watchdog pages runtime maxmem drift until then, per the 2026-08-06 RCA)."
     }
   }
 }

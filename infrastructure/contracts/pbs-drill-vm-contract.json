@@ -1,0 +1,10 @@
+{
+  "vm_id": 907,
+  "name": "pbs-restore-drill",
+  "ip": "192.168.1.248",
+  "memory_mb": 2048,
+  "max_age_minutes": 240,
+  "data_disk_gb": 20,
+  "snippet": "local:snippets/cloudinit-pbs-restore-drill.yaml",
+  "reason": "Ephemeral PBS drill VM (pbs-rebuild-drill.sh / pbs-restore-from-synology-drill.sh). Stamped from Git, verified, then destroyed. 2026-09-04 RCA: a manual restore-from-synology drill run on 2026-09-02 21:11 AEST left this VM running idle for 40h; its 2048 MiB was not counted in the PVE memory budget, pushing the single host past its declared headroom and firing the Aug 03 stall-signature watchdog. This contract makes the drill reservation a first-class budget line and gives the watchdog a max-age stale check so a forgotten drill VM is paged, not silently tolerated. Destroy stale instances with: qm stop 907 --timeout 30 && qm destroy 907 --purge && rm -f /var/lib/vz/snippets/cloudinit-pbs-restore-drill.yaml"
+}

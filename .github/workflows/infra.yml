@@ -431,8 +431,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          # 2026-09-04 RCA: must include infrastructure/contracts — main.tf
+          # reads file("../contracts/legacy-vm-contracts.json") and
+          # file("../contracts/pbs-drill-vm-contract.json"); a terraform-only
+          # sparse checkout silently failed the nightly plan with
+          # "no such file or directory" (latent since the 08-06 contracts
+          # migration; the Sep-04 var-parity fix verified locally + via the
+          # apply job's full `infrastructure` checkout, never this job).
           sparse-checkout: |
             infrastructure/terraform
+            infrastructure/contracts
           sparse-checkout-cone-mode: false
 
       - name: Setup OpenTofu

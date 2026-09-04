@@ -128,6 +128,18 @@ locals {
     for vm in values(local.legacy_vm_contract.vms) : tonumber(vm.memory_mb)
   ])
 
+  # 2026-09-04 RCA: the ephemeral PBS drill VM (907) was provisioned by a
+  # manual drill run but NOT accounted for here, silently overcommitting the
+  # host by 2048 MiB and erasing most of the declared headroom -> Aug 03
+  # stall-signature watchdog fired. Durable rule (same as enable_* not
+  # start_*): ANY VM that exists and can run at any time must be in the
+  # budget. The drill runs weekly via GitHub Actions plus manual dispatch,
+  # so its reservation is unconditional. Single source of truth lives in
+  # infrastructure/contracts/pbs-drill-vm-contract.json so the watchdog's
+  # stale-drill/undeclared-VM checks and the budget read the same numbers.
+  pbs_drill_contract = jsondecode(file("${path.root}/../contracts/pbs-drill-vm-contract.json"))
+  pbs_drill_vm_reserved_memory_mb = tonumber(local.pbs_drill_contract.memory_mb)
+
   # Strategic guardrail after the 2026-07-15 PVE hang RCA:
   # keep an explicit budget for the single-host control plane instead of
   # letting GitOps silently reserve all RAM and push the hypervisor into swap.
@@ -150,6 +162,7 @@ locals {
     2048 + # openclaw (reduced 3→2 GiB, 2026-07-21 RCA)
     2048 + # backup-pbs1 (reduced 4→2 GiB, 2026-07-21 RCA)
     1024 + # tofu-state1
+    local.pbs_drill_vm_reserved_memory_mb + # pbs-restore-drill (2026-09-04 RCA: was missing from budget, overcommitting the host)
     # Count provisioned VMs, not just "should be started" — they can be
     # started at any time and the host must handle the memory.
     (var.enable_migration_helper ? 2048 : 0) +
