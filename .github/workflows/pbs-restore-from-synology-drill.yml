@@ -55,8 +55,12 @@ jobs:
               exit 1
             fi
           else
-            if $SSH 'ping -c1 -W1 192.168.1.248 >/dev/null 2>&1'; then
-              echo "::error::192.168.1.248 (drill IP) is in use by a non-drill host — aborting"
+            # MAC-aware: our own leftover drill VM reuses BC:24:11:AA:90:07,
+            # so ANY other responder on .250 is a foreign squatter (2026-09-07
+            # RCA: a Bilian IoT device held .248 and shot the restore drill).
+            OWNER="$($SSH "arping -c 2 -I vmbr0 192.168.1.250 2>/dev/null | grep -oE '\\[[0-9A-Fa-f:]+\\]' | tr -d '[]' | sort -u | head -1")"
+            if [ -n "$OWNER" ] && [ "$OWNER" != "BC:24:11:AA:90:07" ]; then
+              echo "::error::192.168.1.250 (drill IP) is occupied by foreign MAC $OWNER — aborting"
               exit 1
             fi
             echo "[OK] VM 907 free, drill IP free"
@@ -82,3 +86,19 @@ jobs:
 
       - name: Run restore-from-Synology drill (auto-destroy on completion)
         run: bash scripts/pbs-restore-from-synology-drill.sh
+
+      - name: Post-job — assert drill VM destroyed and lock released
+        if: always()
+        run: |
+          set -e
+          SSH="ssh -i ~/.ssh/pve-kai -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@192.168.1.50"
+          if $SSH 'qm config 907 >/dev/null 2>&1'; then
+            echo "::error::drill VM 907 still exists after run (cleanup failed) — destroy: qm stop 907 --timeout 30 && qm destroy 907 --purge"
+            exit 1
+          fi
+          if flock -n /tmp/pbs-drill.lock -c true 2>/dev/null; then
+            echo "[OK] drill VM 907 destroyed, lock free"
+          else
+            echo "::error::drill lock still held after run"
+            exit 1
+          fi

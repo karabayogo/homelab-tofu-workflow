@@ -27,7 +27,7 @@
 set -euo pipefail
 
 DRILL_VM_ID="${DRILL_VM_ID:-907}"
-DRILL_IP="${DRILL_IP:-192.168.1.248}"
+DRILL_IP="${DRILL_IP:-192.168.1.250}"
 DRILL_NAME="pbs-restore-drill"
 PVE_HOST="${PVE_HOST:-192.168.1.50}"
 PVE_TARGET="root@${PVE_HOST}"
@@ -46,7 +46,27 @@ SNIPPET_PATH="/var/lib/vz/snippets/cloudinit-${DRILL_NAME}.yaml"
 
 ssh_pve() { ssh "${SSH_OPTS[@]}" "$PVE_TARGET" "$@"; }
 log() { echo "[restore-drill] $*"; }
-die() { echo "[restore-drill][ERROR] $*" >&2; exit 1; }
+die() {
+  echo "[restore-drill][ERROR] $*" >&2
+  # 2026-09-07 RCA: `trap cleanup_on_failure ERR` does NOT fire when die() is
+  # invoked as the last command of an `&&`/`||` list (every `[[ ]] || die`
+  # call site in this script) — bash suppresses the ERR trap for that context,
+  # so the trap was dead code and the Sept-07 failed restore drill orphaned
+  # VM 907 for >5h. Call cleanup explicitly here so EVERY failure path
+  # destroys the drill VM. The declare -F guard keeps this safe for die calls
+  # that run before the function definition is reached.
+  if declare -F cleanup_on_failure >/dev/null 2>&1; then
+    cleanup_on_failure
+  fi
+  rm -rf /tmp/restore-drill
+  exit 1
+}
+
+cleanup_on_failure() {
+  log "FAILURE — cleaning up drill VM ${DRILL_VM_ID} (live PBS untouched)"
+  ssh_pve "qm stop ${DRILL_VM_ID} --timeout 30 2>/dev/null; qm destroy ${DRILL_VM_ID} --purge 2>/dev/null; rm -f '${SNIPPET_PATH}'" || true
+}
+trap cleanup_on_failure ERR
 
 # ── Step 0: mirror preflight + data-disk auto-sizing (2026-09-04) ──
 # The Synology mirror is the DR source of truth — fail fast BEFORE the
@@ -69,12 +89,6 @@ if [ "$mirror_gb" -gt 0 ] && [ "$mirror_gb" -gt "$DRILL_DATA_DISK_GB" ]; then
   DRILL_DATA_DISK_GB="$mirror_gb"
 fi
 
-cleanup_on_failure() {
-  log "FAILURE — cleaning up drill VM ${DRILL_VM_ID} (live PBS untouched)"
-  ssh_pve "qm stop ${DRILL_VM_ID} --timeout 30 2>/dev/null; qm destroy ${DRILL_VM_ID} --purge 2>/dev/null; rm -f '${SNIPPET_PATH}'" || true
-}
-trap cleanup_on_failure ERR
-
 exec 9>/tmp/pbs-drill.lock
 flock -n 9 || die "another drill (rebuild or restore) is already running"
 # 2026-09-04: shared lock across BOTH drill scripts — rebuild and restore
@@ -88,6 +102,20 @@ fi
 if [[ "$existing_name" == "$DRILL_NAME" ]]; then
   log "removing leftover drill instance"
   ssh_pve "qm stop ${DRILL_VM_ID} --timeout 30 2>/dev/null; qm destroy ${DRILL_VM_ID} --purge; rm -f '${SNIPPET_PATH}'"
+fi
+
+# ── Step 1: drill IP must be free of FOREIGN responders (2026-09-07 RCA) ──
+# On 2026-09-07 a foreign device (EC:3D:FD:47:7F:18, Bilian IoT) was holding
+# .248: the restore drill's ~1.5h mirror push to root@.248 died rc=255 (SSH
+# hitting the squatter / ARP flapping). A plain ping cannot distinguish the
+# squatter from our own leftover drill VM, so verify the responder MAC: the
+# drill's own MAC (reused every run) means a reclaimable leftover; anything
+# else is a real IP conflict — abort with an actionable message before any
+# long-running work.
+DRILL_MAC="BC:24:11:AA:90:07"
+drill_ip_owner="$(ssh_pve "arping -c 2 -I vmbr0 ${DRILL_IP} 2>/dev/null | grep -oE '\\[[0-9A-Fa-f:]+\\]' | tr -d '[]' | sort -u | head -1" 2>/dev/null || true)"
+if [ -n "$drill_ip_owner" ] && [ "$drill_ip_owner" != "$DRILL_MAC" ]; then
+  die "drill IP ${DRILL_IP} is occupied by foreign MAC ${drill_ip_owner} (drill MAC is ${DRILL_MAC}) — aborting; free the address or change DRILL_IP first"
 fi
 
 # ── Step 1: render the REAL PBS cloud-init template from Git ──
@@ -230,6 +258,13 @@ qm guest exec ${DRILL_VM_ID} --timeout 3000 -- bash -lc 'echo datastore-ready' >
 # Push from VM201 (which mounts Synology) to the drill VM over SSH using
 # VM201's pve-backupsync identity (authorized on every PBS VM via the
 # Git-declared cloud-init template).
+# Pre-verify SSH to the drill VM before the ~1.5h mirror push (2026-09-07
+# RCA: a foreign device squatting .248 hijacked/starved the connection for
+# 1h21m before it died rc=255. Fail in seconds instead of an hour when the
+# drill is unreachable.)
+if ! ssh -i /home/moltbot/.ssh/pve-backupsync -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "root@${DRILL_IP}" 'hostname' >/dev/null 2>&1; then
+  die "drill VM SSH unavailable at ${DRILL_IP} via pve-backupsync identity — refusing to start the long mirror push"
+fi
 PUSH_CMD="rsync -aH --info=progress2 -e 'ssh -i /home/moltbot/.ssh/pve-backupsync -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' ${SYN_ROOT}/datastore/ root@${DRILL_IP}:/srv/proxmox-backup-primary/datastore/"
 ssh_pve "qm guest exec 201 --timeout 7200 -- bash -lc \"mountpoint -q /mnt/synology/proxmoxbackups && ${PUSH_CMD} && echo MIRROR-PUSH-OK\"" > /tmp/restore-drill/push.json 2>/dev/null
 push_rc="$(python3 -c 'import json; print(json.load(open("/tmp/restore-drill/push.json")).get("exitcode", 1))')"

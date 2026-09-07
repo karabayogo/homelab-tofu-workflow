@@ -27,7 +27,7 @@
 set -euo pipefail
 
 DRILL_VM_ID="${DRILL_VM_ID:-907}"
-DRILL_IP="${DRILL_IP:-192.168.1.248}"
+DRILL_IP="${DRILL_IP:-192.168.1.250}"
 DRILL_NAME="backup-pbs-drill"
 PVE_HOST="${PVE_HOST:-192.168.1.50}"
 PVE_TARGET="root@${PVE_HOST}"
@@ -46,7 +46,19 @@ SNIPPET_PATH="/var/lib/vz/snippets/cloudinit-${DRILL_NAME}.yaml"
 ssh_pve() { ssh "${SSH_OPTS[@]}" "$PVE_TARGET" "$@"; }
 
 log() { echo "[pbs-drill] $*"; }
-die() { echo "[pbs-drill][ERROR] $*" >&2; exit 1; }
+die() {
+  echo "[pbs-drill][ERROR] $*" >&2
+  # 2026-09-07 RCA: `trap cleanup_on_failure ERR` does NOT fire when die() is
+  # invoked as the last command of an `&&`/`||` list (every `[[ ]] || die`
+  # call site) — bash suppresses the ERR trap for that context, so the trap
+  # was dead code and a failed drill could orphan VM 907. Call cleanup
+  # explicitly here so EVERY failure path destroys the drill VM.
+  if declare -F cleanup_on_failure >/dev/null 2>&1; then
+    cleanup_on_failure
+  fi
+  rm -rf /tmp/pbs-drill
+  exit 1
+}
 
 cleanup_on_failure() {
   log "FAILURE — cleaning up drill VM ${DRILL_VM_ID} (live PBS untouched)"
@@ -63,6 +75,18 @@ flock -n 9 || die "another drill (rebuild or restore) is already running"
 existing_name="$(ssh_pve "qm config ${DRILL_VM_ID} 2>/dev/null | awk '/^name:/{print \$2}'" || true)"
 if [[ -n "$existing_name" && "$existing_name" != "$DRILL_NAME" ]]; then
   die "VM ${DRILL_VM_ID} exists and is '${existing_name}' (not ${DRILL_NAME}) — refusing to touch it"
+fi
+
+# ── Step 1: drill IP must be free of FOREIGN responders (2026-09-07 RCA) ──
+# A plain ping cannot distinguish a foreign squatter (EC:3D:FD:47:7F:18 held
+# .248 on 2026-09-07, killing the restore drill's mirror push) from our own
+# leftover drill VM. Verify the responder MAC: the drill's own MAC (reused
+# every run) is a reclaimable leftover; anything else is a real conflict —
+# abort with an actionable message.
+DRILL_MAC="BC:24:11:AA:90:07"
+drill_ip_owner="$(ssh_pve "arping -c 2 -I vmbr0 ${DRILL_IP} 2>/dev/null | grep -oE '\[[0-9A-Fa-f:]+\]' | tr -d '[]' | sort -u | head -1" 2>/dev/null || true)"
+if [ -n "$drill_ip_owner" ] && [ "$drill_ip_owner" != "$DRILL_MAC" ]; then
+  die "drill IP ${DRILL_IP} is occupied by foreign MAC ${drill_ip_owner} (drill MAC is ${DRILL_MAC}) — aborting; free the address or change DRILL_IP first"
 fi
 
 # ── Step 1: render the REAL PBS cloud-init template through tofu console ──
