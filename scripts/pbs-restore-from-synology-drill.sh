@@ -266,7 +266,10 @@ if ! ssh -i /home/moltbot/.ssh/pve-backupsync -o BatchMode=yes -o ConnectTimeout
   die "drill VM SSH unavailable at ${DRILL_IP} via pve-backupsync identity — refusing to start the long mirror push"
 fi
 PUSH_CMD="rsync -aH --info=progress2 -e 'ssh -i /home/moltbot/.ssh/pve-backupsync -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' ${SYN_ROOT}/datastore/ root@${DRILL_IP}:/srv/proxmox-backup-primary/datastore/"
-ssh_pve "qm guest exec 201 --timeout 7200 -- bash -lc \"mountpoint -q /mnt/synology/proxmoxbackups && ${PUSH_CMD} && echo MIRROR-PUSH-OK\"" > /tmp/restore-drill/push.json 2>/dev/null
+# The 72 GiB mirror push takes ~2.5-4h (Sep-07 runs died at EXACTLY 2h00m =
+# this guest-exec ceiling, rc=1, with the die->cleanup fix destroying the VM
+# cleanly both times). 14400s (4h) fits inside the workflow's 300m timeout.
+ssh_pve "qm guest exec 201 --timeout 14400 -- bash -lc \"mountpoint -q /mnt/synology/proxmoxbackups && ${PUSH_CMD} && echo MIRROR-PUSH-OK\"" > /tmp/restore-drill/push.json 2>/dev/null
 push_rc="$(python3 -c 'import json; print(json.load(open("/tmp/restore-drill/push.json")).get("exitcode", 1))')"
 [[ "$push_rc" == "0" ]] || die "mirror push failed (rc=${push_rc}) — see /tmp/restore-drill/push.json"
 log "mirror push OK ($(du -sh /tmp/restore-drill 2>/dev/null | awk '{print $1}' || echo '?') scratch)"
