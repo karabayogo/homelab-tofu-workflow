@@ -202,9 +202,9 @@ variable "tofu_deploy_key" {
 # ── k3s cloud-init variables ──
 
 variable "k3s_version" {
-  description = "k3s version to install (e.g., v1.33.6+k3s1)"
+  description = "k3s version to install (e.g., v1.33.13+k3s2). MUST be the same on every node — a version skew across masters triggers an etcd downgrade-guard fatal on reboot (2026-09-08 RCA: cloud-init re-ran with the stale v1.33.6 default and downgraded masters, taking the cluster down). Keep in lockstep with the applied k3s and the CI k3s-version-consistency gate."
   type        = string
-  default     = "v1.33.6+k3s1"
+  default     = "v1.33.13+k3s2"
 }
 
 variable "k3s_token" {
