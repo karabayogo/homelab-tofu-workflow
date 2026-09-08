@@ -46,28 +46,35 @@ SNIPPET_PATH="/var/lib/vz/snippets/cloudinit-${DRILL_NAME}.yaml"
 
 ssh_pve() { ssh "${SSH_OPTS[@]}" "$PVE_TARGET" "$@"; }
 log() { echo "[restore-drill] $*"; }
+KEEP_MODE=0
+
 die() {
   echo "[restore-drill][ERROR] $*" >&2
-  # 2026-09-07 RCA: `trap cleanup_on_failure ERR` does NOT fire when die() is
-  # invoked as the last command of an `&&`/`||` list (every `[[ ]] || die`
-  # call site in this script) — bash suppresses the ERR trap for that context,
-  # so the trap was dead code and the Sept-07 failed restore drill orphaned
-  # VM 907 for >5h. Call cleanup explicitly here so EVERY failure path
-  # destroys the drill VM. The declare -F guard keeps this safe for die calls
-  # that run before the function definition is reached.
-  if declare -F cleanup_on_failure >/dev/null 2>&1; then
-    cleanup_on_failure
-  fi
-  rm -rf /tmp/restore-drill
   exit 1
 }
 
-cleanup_on_failure() {
-  log "FAILURE — cleaning up drill VM ${DRILL_VM_ID} (live PBS untouched)"
+cleanup() {
+  # EXIT trap — the one trap bash cannot suppress (2026-09-08 RCA: the ERR trap
+  # did NOT fire when the push's ssh died rc=255 after the 2h idle-TCP keepalive
+  # kill, so the Sept-08 failed drill orphaned VM 907 and the heartbeat watchdog
+  # had to auto-destroy it; same suppressed-trap class as the Sept-07 orphan).
+  # EVERY exit path now destroys the drill VM unless --keep was requested.
+  # Name-guarded like the watchdog: a foreign VM squatting 907 is never touched.
+  local existing
+  existing="$(ssh_pve "qm config ${DRILL_VM_ID} 2>/dev/null | awk -F': ' '/^name:/{gsub(/^ +/,\"\",\$2); print \$2}'" 2>/dev/null || true)"
+  if [ "${KEEP_MODE:-0}" = "1" ]; then
+    log "KEEP mode: leaving drill VM ${DRILL_VM_ID} running (watchdog sees /tmp/pbs-drill.keep)"
+    return 0
+  fi
+  if [ "$existing" = "$DRILL_NAME" ] || [ "$existing" = "backup-pbs-drill" ]; then
+    log "cleanup: destroying drill VM ${DRILL_VM_ID} + snippet"
+    ssh_pve "qm stop ${DRILL_VM_ID} --timeout 10 2>/dev/null; qm destroy ${DRILL_VM_ID} --purge 2>/dev/null; rm -f '${SNIPPET_PATH}'" || true
+  fi
   rm -f /tmp/pbs-drill.keep
-  ssh_pve "qm stop ${DRILL_VM_ID} --timeout 30 2>/dev/null; qm destroy ${DRILL_VM_ID} --purge 2>/dev/null; rm -f '${SNIPPET_PATH}'" || true
+  ssh-keygen -R "$DRILL_IP" >/dev/null 2>&1 || true
+  rm -rf /tmp/restore-drill
 }
-trap cleanup_on_failure ERR
+trap cleanup EXIT
 
 # ── Step 0: mirror preflight + data-disk auto-sizing (2026-09-04) ──
 # The Synology mirror is the DR source of truth — fail fast BEFORE the
@@ -253,28 +260,30 @@ log "post-reboot settled — datastore mounted on a clean boot"
 # ── Step 5: recover the datastore from the Synology mirror ONLY ──
 # The drill VM has no route to the live PBS (.247 route is unnecessary; the
 # curated mirror is the sole source). rsync pushes mirror -> drill datastore.
+# 2026-09-08 RCA: the push used to run via `qm guest exec 201` — PVE exec'ing
+# into VM201, the runner's OWN VM. Guest-exec buffers ALL guest stdout until
+# the command completes, so the ssh session to PVE carried zero TCP traffic
+# for the whole transfer and the OS TCP keepalive (tcp_keepalive_time=7200)
+# killed the idle connection at ~2h (Sep-07 runs died at exactly 2h00m,
+# Sep-08 at 2h26m) → rc=255 → script abort → orphaned drill VM (the ERR trap
+# was suppressed, 2026-09-07 class). The push now runs DIRECTLY from the
+# runner (VM201 mounts Synology and holds the pve-backupsync identity), with
+# ssh keepalives so the session survives the 2.5-4h transfer, and streams
+# progress to the GHA log instead of a silent JSON buffer.
 log "restoring curated mirror from Synology (via VM201) into drill datastore"
-ssh_pve "set -e
-# Synology lives under VM201's mount; use VM201 as the rsync pull source
-qm guest exec ${DRILL_VM_ID} --timeout 3000 -- bash -lc 'echo datastore-ready' >/dev/null"
-# Push from VM201 (which mounts Synology) to the drill VM over SSH using
-# VM201's pve-backupsync identity (authorized on every PBS VM via the
-# Git-declared cloud-init template).
+mountpoint -q /mnt/synology/proxmoxbackups || die "Synology mount /mnt/synology/proxmoxbackups not present on VM201"
+PUSH_SSH_OPTS=( -i /home/moltbot/.ssh/pve-backupsync -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectTimeout=10 )
 # Pre-verify SSH to the drill VM before the ~1.5h mirror push (2026-09-07
 # RCA: a foreign device squatting .248 hijacked/starved the connection for
 # 1h21m before it died rc=255. Fail in seconds instead of an hour when the
 # drill is unreachable.)
-if ! ssh -i /home/moltbot/.ssh/pve-backupsync -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "root@${DRILL_IP}" 'hostname' >/dev/null 2>&1; then
+if ! ssh "${PUSH_SSH_OPTS[@]}" "root@${DRILL_IP}" 'hostname' >/dev/null 2>&1; then
   die "drill VM SSH unavailable at ${DRILL_IP} via pve-backupsync identity — refusing to start the long mirror push"
 fi
-PUSH_CMD="rsync -aH --info=progress2 -e 'ssh -i /home/moltbot/.ssh/pve-backupsync -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' ${SYN_ROOT}/datastore/ root@${DRILL_IP}:/srv/proxmox-backup-primary/datastore/"
-# The 72 GiB mirror push takes ~2.5-4h (Sep-07 runs died at EXACTLY 2h00m =
-# this guest-exec ceiling, rc=1, with the die->cleanup fix destroying the VM
-# cleanly both times). 14400s (4h) fits inside the workflow's 300m timeout.
-ssh_pve "qm guest exec 201 --timeout 14400 -- bash -lc \"mountpoint -q /mnt/synology/proxmoxbackups && ${PUSH_CMD} && echo MIRROR-PUSH-OK\"" > /tmp/restore-drill/push.json 2>/dev/null
-push_rc="$(python3 -c 'import json; print(json.load(open("/tmp/restore-drill/push.json")).get("exitcode", 1))')"
-[[ "$push_rc" == "0" ]] || die "mirror push failed (rc=${push_rc}) — see /tmp/restore-drill/push.json"
-log "mirror push OK ($(du -sh /tmp/restore-drill 2>/dev/null | awk '{print $1}' || echo '?') scratch)"
+if ! rsync -aH --info=progress2 -e "ssh ${PUSH_SSH_OPTS[*]}" "${SYN_ROOT}/datastore/" "root@${DRILL_IP}:/srv/proxmox-backup-primary/datastore/"; then
+  die "mirror push failed (rsync rc=$?) — see step log for the failure point"
+fi
+log "mirror push OK"
 
 # ── Step 6: verify chunk-store integrity on the drill PBS ──
 log "verifying restored datastore integrity (index -> chunk walk)"
@@ -313,17 +322,14 @@ test -s /root/drill-restore/root.pxar \&\& echo RESTORE-PXAR-OK \&\& proxmox-bac
 echo "$RESTORE_OUT"
 echo "$RESTORE_OUT" | grep -q "RESTORE-PXAR-OK" || die "pxar restore did not produce an archive"
 
-# ── Step 8: destroy the drill ──
+# ── Step 8: destroy the drill (handled by the EXIT trap) ──
 if [[ "${1:-}" == "--keep" ]]; then
+  KEEP_MODE=1
   touch /tmp/pbs-drill.keep  # tell the proxmox-heartbeat-watchdog this lock-free
                              # running VM is operator-intended, not an orphan
   log "KEEP mode: drill VM left running at ${DRILL_IP} — destroy with: qm stop ${DRILL_VM_ID} && qm destroy ${DRILL_VM_ID} --purge"
   exit 0
 fi
-log "destroying drill VM + snippet"
-rm -f /tmp/pbs-drill.keep
-ssh_pve "qm stop ${DRILL_VM_ID} --timeout 30; qm destroy ${DRILL_VM_ID} --purge; rm -f '${SNIPPET_PATH}'"
-ssh-keygen -R "$DRILL_IP" >/dev/null 2>&1 || true
-rm -rf /tmp/restore-drill
-
 log "PASS — DR endpoint proven: Synology mirror alone rebuilt a PBS datastore, chunks verified, and a real pxar restore succeeded"
+log "destroying drill VM + snippet (EXIT trap)"
+exit 0
