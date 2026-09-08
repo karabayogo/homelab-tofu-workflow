@@ -42,6 +42,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Ensure full checkout (sparse self-heal)
+        run: |
+          set -e
+          # 2026-09-08 RCA: the dedicated drill runner inherited a stale
+          # sparse-checkout git config (core.sparseCheckout=true, cone
+          # infrastructure/{terraform,contracts}) from the 09-04 drift-check
+          # repair, so only infrastructure/ was checked out and the drill step
+          # died 127 "No such file or directory" while absolute-path preflights
+          # passed. Self-heal instead of failing silently: disabling
+          # sparse-checkout repopulates the working tree.
+          if [ ! -f scripts/pbs-restore-from-synology-drill.sh ]; then
+            echo "::warning::checkout incomplete (stale sparse-checkout) — disabling and re-populating"
+            git sparse-checkout disable
+            test -f scripts/pbs-restore-from-synology-drill.sh || {
+              echo "::error::checkout still incomplete after de-sparse — investigate runner worktree git config"
+              exit 1
+            }
+          fi
+          echo "[OK] full checkout verified (scripts/pbs-restore-from-synology-drill.sh present)"
+
       - name: Preflight — drill VMID reclaimed/free, drill IP free, PVE reachable
         run: |
           set -e
