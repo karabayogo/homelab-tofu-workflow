@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   drill:
-    runs-on: self-hosted
+    runs-on: ["self-hosted", "LAN", "drill-runner"]
     timeout-minutes: 45
     steps:
       - name: Checkout

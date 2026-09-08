@@ -212,9 +212,31 @@ run_reboot() {
   running=$(node_running_kernel "$node")
   staged=$(node_staged_kernel "$node")
   echo "  running=$running staged=$staged"
-  if [ "$running" = "$staged" ] && ! ssh_running_kernel_pending "$node"; then
-    echo "  SKIP: $node already on staged kernel, no pending reboot"
-    return 0
+  if [ "$running" = "?" ] || [ "$staged" = "?" ]; then
+    echo "REFUSE: cannot determine kernel state for $node (ssh to contract ip failed) — refusing to reboot blind; fix node access first (2026-09-08 RCA: unknown kernel used to be silently SKIPPED as a false green)"
+    exit 2
+  fi
+  # 2026-09-08 RCA: the old gate skipped when running==staged. That (a) rebooted
+  # a node on contract kernel every week while a newer kernel stayed staged
+  # (139 is still installed on both workers), and (b) SKIPPED the dangerous
+  # case — a node that already silently jumped onto the staged kernel would
+  # match running==staged and never be driven back to the contract kernel.
+  # Correct policy: the node is healthy iff it RUNS the contract kernel (the
+  # boot-pin makes any staged kernel harmless — crash-reboots land on
+  # saved_entry=contract). Re-point saved_entry (cheap, no reboot) as defence
+  # in depth, then skip. Reboot only when running!=contract (silent jump back,
+  # or deliberate promotion after the contract is updated) or a userspace
+  # reboot is pending.
+  if [ "$running" = "$ck" ]; then
+    if ensure_saved_entry_points_to_contract "$node" "$ck"; then
+      echo "  GRUB saved_entry pinned to $ck (no reboot needed)"
+    else
+      echo "  WARN: could not re-point GRUB saved_entry on $node — boot-pin check will re-flag"
+    fi
+    if ! ssh_running_kernel_pending "$node"; then
+      echo "  SKIP: $node already on contract kernel $ck; staged=${staged} is harmless under the boot-pin, no pending reboot"
+      return 0
+    fi
   fi
 
   echo "  cordoning $node ..."
@@ -244,8 +266,8 @@ run_reboot() {
   local new_kernel
   new_kernel=$(node_running_kernel "$node")
   echo "  node Ready, kernel=$new_kernel"
-  if [ -n "$new_kernel" ] && [ "$new_kernel" != "?" ] && [ "$new_kernel" != "$cc" ]; then
-    echo "  WARN: kernel ${new_kernel} != contract ${cc} — uncordoning anyway, parity check will re-flag"
+  if [ -n "$new_kernel" ] && [ "$new_kernel" != "?" ] && [ "$new_kernel" != "$ck" ]; then
+    echo "  WARN: kernel ${new_kernel} != contract ${ck} — uncordoning anyway, parity check will re-flag"
   fi
 
   "$KUBECTL" uncordon "$node"

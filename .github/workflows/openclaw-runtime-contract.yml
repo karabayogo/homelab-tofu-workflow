@@ -9,7 +9,7 @@ on:
 jobs:
   contract:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: self-hosted
+    runs-on: ["self-hosted", "LAN", "moltbot"]
     timeout-minutes: 15
     steps:
       - name: Checkout

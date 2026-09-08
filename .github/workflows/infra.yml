@@ -80,7 +80,7 @@ jobs:
   k8s-multipath-hardening:
     needs: tofu
     if: needs.tofu.result == 'success'
-    runs-on: self-hosted
+    runs-on: ["self-hosted", "LAN", "moltbot"]
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.GARAGE_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.GARAGE_SECRET_KEY }}
@@ -137,7 +137,7 @@ jobs:
   k8s-cloud-init-sudoers-hygiene:
     needs: tofu
     if: needs.tofu.result == 'success'
-    runs-on: self-hosted
+    runs-on: ["self-hosted", "LAN", "moltbot"]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -171,7 +171,7 @@ jobs:
   k8s-k3s-config-node-label-convergence:
     needs: tofu
     if: needs.tofu.result == 'success'
-    runs-on: self-hosted
+    runs-on: ["self-hosted", "LAN", "moltbot"]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -209,7 +209,7 @@ jobs:
   k8s-kernel-parity-contract:
     needs: tofu
     if: needs.tofu.result == 'success'
-    runs-on: self-hosted
+    runs-on: ["self-hosted", "LAN", "moltbot"]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -246,7 +246,7 @@ jobs:
   garage-vm-bootstrap-reconcile:
     needs: tofu
     if: needs.tofu.result == 'success'
-    runs-on: self-hosted
+    runs-on: ["self-hosted", "LAN", "moltbot"]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -299,7 +299,7 @@ jobs:
   pve-host-backup-stack:
     needs: tofu
     if: needs.tofu.result == 'success'
-    runs-on: self-hosted
+    runs-on: ["self-hosted", "LAN", "moltbot"]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -369,7 +369,7 @@ jobs:
   vm201-offhost-backup-stack:
     needs: tofu
     if: needs.tofu.result == 'success'
-    runs-on: self-hosted
+    runs-on: ["self-hosted", "LAN", "moltbot"]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -405,7 +405,7 @@ jobs:
   legacy-vm-memory-contract:
     needs: tofu
     if: needs.tofu.result == 'success'
-    runs-on: self-hosted
+    runs-on: ["self-hosted", "LAN", "moltbot"]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -440,7 +440,7 @@ jobs:
   # Only runs on scheduled trigger (not on push/PR to avoid noise)
   drift-check:
     if: github.event_name == 'schedule'
-    runs-on: self-hosted
+    runs-on: ["self-hosted", "LAN", "moltbot"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
