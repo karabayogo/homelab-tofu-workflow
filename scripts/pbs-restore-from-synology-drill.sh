@@ -64,6 +64,7 @@ die() {
 
 cleanup_on_failure() {
   log "FAILURE — cleaning up drill VM ${DRILL_VM_ID} (live PBS untouched)"
+  rm -f /tmp/pbs-drill.keep
   ssh_pve "qm stop ${DRILL_VM_ID} --timeout 30 2>/dev/null; qm destroy ${DRILL_VM_ID} --purge 2>/dev/null; rm -f '${SNIPPET_PATH}'" || true
 }
 trap cleanup_on_failure ERR
@@ -91,6 +92,7 @@ fi
 
 exec 9>/tmp/pbs-drill.lock
 flock -n 9 || die "another drill (rebuild or restore) is already running"
+rm -f /tmp/pbs-drill.keep  # fresh run: clear any previous --keep inspection marker
 # 2026-09-04: shared lock across BOTH drill scripts — rebuild and restore
 # both stamp VM 907/.248; mutual exclusion by name-guard alone was fragile.
 
@@ -313,10 +315,13 @@ echo "$RESTORE_OUT" | grep -q "RESTORE-PXAR-OK" || die "pxar restore did not pro
 
 # ── Step 8: destroy the drill ──
 if [[ "${1:-}" == "--keep" ]]; then
+  touch /tmp/pbs-drill.keep  # tell the proxmox-heartbeat-watchdog this lock-free
+                             # running VM is operator-intended, not an orphan
   log "KEEP mode: drill VM left running at ${DRILL_IP} — destroy with: qm stop ${DRILL_VM_ID} && qm destroy ${DRILL_VM_ID} --purge"
   exit 0
 fi
 log "destroying drill VM + snippet"
+rm -f /tmp/pbs-drill.keep
 ssh_pve "qm stop ${DRILL_VM_ID} --timeout 30; qm destroy ${DRILL_VM_ID} --purge; rm -f '${SNIPPET_PATH}'"
 ssh-keygen -R "$DRILL_IP" >/dev/null 2>&1 || true
 rm -rf /tmp/restore-drill
