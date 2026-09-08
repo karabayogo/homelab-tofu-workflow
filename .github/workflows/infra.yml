@@ -20,6 +20,7 @@ jobs:
         with:
           sparse-checkout: |
             infrastructure/terraform/modules/vm/templates
+            infrastructure/terraform/modules/vm/variables.tf
             scripts
           sparse-checkout-cone-mode: false
 
@@ -52,6 +53,31 @@ jobs:
 
       - name: Validate k3s node-label cloud-init contract
         run: bash scripts/validate-k3s-cloud-init-node-labels.sh
+
+      # 2026-09-08 outage RCA: a whole-host reboot re-ran cloud-init with a
+      # STALE k3s_version default (v1.33.6+k3s1) on masters that were running
+      # the intended v1.33.13+k3s2 (etcd 3.6). The resulting etcd version skew
+      # tripped the downgrade-guard fatal on every master -> full control-plane
+      # outage. The Aug-30 v1.33.13 fix was applied to nodes manually but never
+      # committed to GitOps, so the default silently reverted. NON-REMOVABLE:
+      # the GitOps default must equal the canonical cluster k3s version, and
+      # every template must consume that single ${k3s_version} variable.
+      - name: Enforce k3s version pin consistency (non-removable contract)
+        run: |
+          set -euo pipefail
+          EXPECTED="v1.33.13+k3s2"
+          grep -q "default *= *\"${EXPECTED}\"" infrastructure/terraform/modules/vm/variables.tf \
+            || { echo "::error::k3s_version default in variables.tf is not the pinned ${EXPECTED} (2026-09-08 etcd-downgrade outage RCA)" >&2; exit 1; }
+          for tmpl in \
+            infrastructure/terraform/modules/vm/templates/cloud-init-master.yaml.tftpl \
+            infrastructure/terraform/modules/vm/templates/cloud-init-worker.yaml.tftpl; do
+            grep -q 'INSTALL_K3S_VERSION="${k3s_version}"' "$tmpl" \
+              || { echo "::error::$tmpl does not install via the single ${k3s_version} variable" >&2; exit 1; }
+            if grep -Eq 'INSTALL_K3S_VERSION="v[0-9]' "$tmpl"; then
+              echo "::error::$tmpl hardcodes a concrete k3s version — must use \${k3s_version} so all nodes stay in lockstep" >&2
+              exit 1
+            fi
+          done
 
   tofu:
     needs: cloud-init-template-contract
