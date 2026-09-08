@@ -203,7 +203,6 @@ run_reboot() {
   fi
 
   node_ready "$node" || { echo "REFUSE: $node not Ready"; exit 2; }
-  longhorn_healthy || { echo "REFUSE: Longhorn has unhealthy/attached non-healthy volumes — aborting before drain"; exit 2; }
   local running staged cc ck
   cc=$(cordoned_count)
   [ "$cc" -eq 0 ] || { echo "REFUSE: ${cc} node(s) already SchedulingDisabled — single-flight"; exit 2; }
@@ -238,6 +237,13 @@ run_reboot() {
       return 0
     fi
   fi
+  # 2026-09-08 RCA (gate order): longhorn_healthy used to run BEFORE this
+  # kernel-identity skip. A node already ON the contract kernel — the weekly
+  # no-op case — could abort the whole run on a transient volume rebuild
+  # (Sep-06: worker1's reboot minutes earlier left a volume mid-rebuild, so
+  # worker2, which needed NO reboot, was REFUSEd and the cron went red).
+  # The Longhorn gate only matters when a reboot is actually about to happen.
+  longhorn_healthy || { echo "REFUSE: Longhorn has unhealthy/attached non-healthy volumes — aborting before drain"; exit 2; }
 
   echo "  cordoning $node ..."
   "$KUBECTL" cordon "$node"
