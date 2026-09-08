@@ -291,7 +291,7 @@ INTEGRITY="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 1200 -- bash -lc '
 set -e
 for group in host/pve-config vm/201 vm/300 vm/906; do
   latest=\"\"
-  while IFS= read -r d; do [[ -f \"\$d/index.json.blob\" ]] \&\& latest=\"\$d\"; done < <(find /srv/proxmox-backup-primary/datastore/\$group -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort)
+  while IFS= read -r d; do [[ -f \"\$d/index.json.blob\" ]] && latest=\"\$d\"; done < <(find /srv/proxmox-backup-primary/datastore/\$group -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort)
   [[ -n \"\$latest\" ]] || { echo \"FAIL no snapshot for \$group\"; exit 1; }
   for f in \"\$latest\"/*.fidx \"\$latest\"/*.didx; do
     [[ -e \"\$f\" ]] || continue
