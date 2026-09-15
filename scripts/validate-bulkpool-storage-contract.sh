@@ -56,8 +56,12 @@ for module in k8s_worker1 k8s_worker2; do
     echo "[ERROR] module $module not found in $MAIN_TF" >&2
     exit 1
   fi
-  if ! grep -Eq 'data_storage *= *"bulkpool"' <<<"$block"; then
-    echo "[ERROR] module $module must keep data_storage = \"bulkpool\" for Longhorn replica disks'" >&2
+  # 2026-09-14 RCA: workers migrated from bulkpool (ZFS zvol) to bulkpool-dir
+  # (file-backed) to avoid the zvol event path that caused iSCSI medium errors.
+  # Both storage types are acceptable — the contract ensures workers stay on the
+  # bulkpool family (not local-zfs or other storage).
+  if ! grep -Eq 'data_storage *= *"bulkpool(-dir)?"' <<<"$block"; then
+    echo "[ERROR] module $module must use data_storage = \"bulkpool\" or \"bulkpool-dir\" (2026-09-14 RCA: migrated off zvol event path)'" >&2
     exit 1
   fi
 done
