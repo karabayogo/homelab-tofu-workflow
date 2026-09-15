@@ -392,7 +392,13 @@ module "k8s_worker1" {
   os_disk_size_gb   = 80
   data_disk_size_gb = 150
   vm_storage        = "local-zfs"
-  data_storage      = "bulkpool"
+  # 2026-09-14 RCA: migrate off ZFS zvol event path to file-backed storage.
+  # Workers share the same Samsung 870 QVO mirror (bulkpool). The zvol event
+  # path (zvol_check_events, txg_wait_synced) contributed to iSCSI medium
+  # errors that corrupted Longhorn PVCs. File-backed bulkpool-dir avoids
+  # zvol-specific failure modes while remaining on the same physical pool.
+  # True per-worker isolation requires a third SSD.
+  data_storage      = "bulkpool-dir"
   bridge            = "vmbr0"
   vm_os_type        = "l26"
   vm_bios           = "ovmf"
@@ -446,7 +452,8 @@ module "k8s_worker2" {
   os_disk_size_gb   = 80
   data_disk_size_gb = 100
   vm_storage        = "local-zfs"
-  data_storage      = "bulkpool"
+  # 2026-09-14 RCA: migrate off ZFS zvol event path to file-backed storage.
+  data_storage      = "bulkpool-dir"
   bridge            = "vmbr0"
   vm_os_type        = "l26"
   vm_bios           = "ovmf"
