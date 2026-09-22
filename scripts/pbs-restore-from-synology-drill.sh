@@ -318,7 +318,7 @@ mkdir -p /root/drill-restore
 proxmox-backup-client restore \"\${snapshot}\" root.pxar --repository /srv/proxmox-backup-primary/datastore --keyfile /etc/proxmox-backup/encryption-key.json 2>/dev/null \
   || proxmox-backup-client restore \"\${snapshot}\" root.pxar --repository /srv/proxmox-backup-primary/datastore 2>&1 | tail -3
 test -s /root/drill-restore/root.pxar \&\& echo RESTORE-PXAR-OK \&\& proxmox-backup-client list-files \"\${snapshot}\" --repository /srv/proxmox-backup-primary/datastore 2>/dev/null | head -5
-'" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("out-data","")); err=d.get("err-data","") or ""; err.strip() && print("[guest-stderr]", err[:400])')"
+'" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("out-data","")); err=d.get("err-data","") or ""; err.strip() and print("[guest-stderr]", err[:400])')"
 echo "$RESTORE_OUT"
 echo "$RESTORE_OUT" | grep -q "RESTORE-PXAR-OK" || die "pxar restore did not produce an archive"
 
