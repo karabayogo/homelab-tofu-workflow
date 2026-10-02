@@ -15,9 +15,13 @@ packages:
   - apt-transport-https
   - ca-certificates
   - rsync
-  # proxmox-backup-client is needed for DR restore drills (pxar restore from
-  # a recovered datastore); pbs server packages alone do not ship it.
-  - proxmox-backup-client
+  # NOTE: proxmox-backup-client is NOT installed here. cloud-init `packages:`
+  # runs BEFORE /opt/pbs-install.sh adds the PBS apt repo, so a PBS package
+  # listed here is silently skipped (cloud-init retries per-package and
+  # continues). 2026-10-02 RCA: a rebuilt-from-Git PBS therefore had no client,
+  # which is exactly what the DR restore drill needs — and the drill only
+  # discovered it after a 2h19m mirror push. It is installed in
+  # /opt/pbs-install.sh (after the repo exists) instead.
 
 disable_root: false
 users:
@@ -126,7 +130,11 @@ write_files:
 
       export DEBIAN_FRONTEND=noninteractive
       apt_retry apt-get update -qq -o Acquire::ForceIPv4=true
-      apt_retry apt-get install -y -o Acquire::ForceIPv4=true --fix-missing proxmox-backup-server rsync
+      # proxmox-backup-client is required for DR restore drills (pxar restore
+      # from a recovered datastore) and for any real post-rebuild restore. It
+      # must be installed HERE, after the PBS repo above exists — cloud-init
+      # `packages:` runs earlier and silently skips unavailable packages.
+      apt_retry apt-get install -y -o Acquire::ForceIPv4=true --fix-missing proxmox-backup-server proxmox-backup-client rsync
 
   - path: /opt/pbs-bootstrap.sh
     permissions: "0755"

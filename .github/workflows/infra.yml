@@ -356,15 +356,15 @@ jobs:
             python3 scripts/drill-scripts-def-before-use-gate.py "$s"
           done
 
-      - name: Validate drill scripts — no escaped & in ssh payloads
-        # 2026-10-02: a backslash-escaped `&&` inside a double-quoted ssh
-        # payload reaches the guest as a literal `\&` -> bash syntax error
-        # before the first command runs. That defect silently killed the
-        # restore drill's actual DR proof (the pxar restore) on EVERY run
-        # since the workflow landed. Inside double quotes `&` is already
-        # literal, so escaping it is never correct (same class as the
-        # 2026-09-08 integrity-walk fix). bash -n cannot catch this: the
-        # payload is a string to the host shell and only breaks on the guest.
+      - name: Validate drill scripts — ssh payload quoting and escaped &
+        # 2026-10-02: two classes that `bash -n` cannot catch, because to the
+        # host shell an ssh payload is just a string:
+        #   (a) a raw " (or a backtick, or a raw $) inside the double-quoted
+        #       payload — the host string ends early and the rest of the payload
+        #       leaks into the host shell. A comment quoting an error message
+        #       did exactly this and cost a full 2h19m drill run;
+        #   (b) a backslash-escaped `&&` reaching the guest as a literal
+        #       backslash-ampersand -> guest bash syntax error.
         run: |
           set -euo pipefail
           for s in scripts/pbs-rebuild-drill.sh scripts/pbs-restore-from-synology-drill.sh; do
@@ -373,7 +373,8 @@ jobs:
               exit 1
             fi
           done
-          echo "[OK] drill scripts contain no escaped & in ssh payloads"
+          python3 scripts/drill-scripts-payload-quoting-gate.py \
+            scripts/pbs-rebuild-drill.sh scripts/pbs-restore-from-synology-drill.sh
 
       - name: Verify PVE host storage contracts on PRs
         if: github.event_name == 'pull_request'

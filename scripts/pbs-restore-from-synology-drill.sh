@@ -257,6 +257,24 @@ done
 [[ "$healthy" == "READY" ]] || die "system did not come back healthy (datastore+manager) after reboot"
 log "post-reboot settled — datastore mounted on a clean boot"
 
+# ── Step 4b: fail-fast tool contract on the drill VM ──
+# 2026-10-02 RCA: the drill pushed the full ~70 GiB mirror (2h19m) and only then
+# discovered the rebuilt PBS had no `proxmox-backup-client` — the template
+# declared it in cloud-init `packages:`, which runs BEFORE the PBS apt repo is
+# added, so cloud-init skipped it silently. Assert the DR tools up front: a
+# missing tool must cost minutes, not a full mirror push. (Payload is
+# quote-free on purpose — see the NOTE before Step 7.)
+TOOLS="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 60 -- bash -lc 'for c in proxmox-backup-manager proxmox-backup-client openssl; do command -v \$c >/dev/null 2>&1 || echo MISSING-\$c; done'" 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("out-data","").strip())
+except Exception: print("TOOLS-PROBE-FAILED")' || echo TOOLS-PROBE-FAILED)"
+if echo "$TOOLS" | grep -q "MISSING-"; then
+  die "drill VM is missing required DR tools: $(echo "$TOOLS" | grep MISSING- | tr '\n' ' ') — the rebuild-from-Git contract no longer ships them (template pbs-install.sh)"
+fi
+if echo "$TOOLS" | grep -q "TOOLS-PROBE-FAILED"; then
+  die "could not probe the drill VM for required DR tools"
+fi
+log "tool contract satisfied on the drill VM (manager + client + openssl)"
+
 # ── Step 5: recover the datastore from the Synology mirror ONLY ──
 # The drill VM has no route to the live PBS (.247 route is unnecessary; the
 # curated mirror is the sole source). rsync pushes mirror -> drill datastore.
@@ -329,6 +347,12 @@ log "chunk integrity verified for host/pve-config + vm/201 (all present groups l
 #       operator performs after a real rebuild. Bootstrapping the PVE→PBS
 #       backup token from the Git template stays an open DR gap.
 log "restoring host/pve-config latest snapshot (the actual DR proof)"
+# NOTE: the ssh payload below is a double-quoted host string — it may contain
+# NOTHING but escaped quotes (\") and escaped dollars (\$). A raw " inside it
+# (even in a comment) terminates the host-side string and the remaining payload
+# leaks into the host shell (2026-10-02: a comment quoting an error message cost
+# a full 2h19m drill run — `snapshot: command not found`). The CI gate
+# drill-scripts-payload-quoting-gate.py enforces this.
 RESTORE_OUT="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 1200 -- bash -lc '
 set -e
 latest=\"\"
@@ -341,9 +365,8 @@ proxmox-backup-manager user create drill-restore@pbs --password \"\$pw\" >/dev/n
 proxmox-backup-manager acl update /datastore/primary DatastoreAdmin --auth-id drill-restore@pbs >/dev/null
 fp=\"\$(openssl x509 -in /etc/proxmox-backup/proxy.pem -noout -fingerprint -sha256 | sed -e \"s/^.*=//\" -e \"s/://g\" | sed \"s/\(..\)/\1:/g;s/:\$//\")\"
 repo=\"drill-restore@pbs@127.0.0.1:primary\"
-# credentials must be exported BEFORE any client call: `snapshot files` needs
-# them too (2026-10-02: exporting them after the manifest probe made the probe
-# fail with "no password input mechanism available")
+# creds must be exported BEFORE any client call: the manifest probe
+# authenticates too (exporting late fails with no-password-input-mechanism)
 export PBS_PASSWORD=\"\$pw\" PBS_FINGERPRINT=\"\$fp\"
 arch=\"\$(proxmox-backup-client snapshot files \"\$snapshot\" --repository \"\$repo\" | grep -oE \"[A-Za-z0-9._-]+\.(mpxar|pxar)\.didx\" | head -1)\"
 [[ -n \"\$arch\" ]] || { echo \"RESTORE-FAIL no pxar archive in the manifest of \$snapshot\"; exit 1; }
