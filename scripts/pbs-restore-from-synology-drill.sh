@@ -298,10 +298,25 @@ PUSH_SSH_OPTS=( -i /home/moltbot/.ssh/pve-backupsync -o BatchMode=yes -o StrictH
 if ! ssh "${PUSH_SSH_OPTS[@]}" "root@${DRILL_IP}" 'hostname' >/dev/null 2>&1; then
   die "drill VM SSH unavailable at ${DRILL_IP} via pve-backupsync identity — refusing to start the long mirror push"
 fi
-if ! rsync -aH --info=progress2 -e "ssh ${PUSH_SSH_OPTS[*]}" "${SYN_ROOT}/datastore/" "root@${DRILL_IP}:/srv/proxmox-backup-primary/datastore/"; then
+if ! rsync -aH --info=progress2 --chown=backup:backup --chmod=D755,F644 -e "ssh ${PUSH_SSH_OPTS[*]}" "${SYN_ROOT}/datastore/" "root@${DRILL_IP}:/srv/proxmox-backup-primary/datastore/"; then
   die "mirror push failed (rsync rc=$?) — see step log for the failure point"
 fi
 log "mirror push OK"
+# 2026-10-02 RCA: the Synology mirror is a CIFS mount with forceuid/forcegid
+# (uid 1000) and dir_mode=0770/file_mode=0660, so a plain `rsync -aH` wrote the
+# drill datastore as uid 1000 — and the PBS service user (backup) could not read
+# the chunk store: "unable to open chunk store ... Permission denied (os error
+# 13)" only after a full 2h10m push. --chown/--chmod make the restored datastore
+# match the live PBS contract (backup:backup, 0755 dirs / 0644 files).
+
+# ── Step 5b: chunk store must be readable by the PBS service user ──
+# Same reason: verify it now (seconds) instead of after the integrity walk.
+PERM="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 300 -- bash -lc 'chmod 0750 /srv/proxmox-backup-primary/datastore/.chunks; find /srv/proxmox-backup-primary/datastore/.chunks -mindepth 1 -type d -exec chmod 0750 {} +; if command -v sudo >/dev/null 2>&1; then sudo -u backup test -r /srv/proxmox-backup-primary/datastore/.chunks && sudo -u backup test -x /srv/proxmox-backup-primary/datastore/.chunks && echo CHUNK-STORE-READABLE || echo CHUNK-STORE-UNREADABLE; else stat -c %U:%G:%a /srv/proxmox-backup-primary/datastore/.chunks; fi'" 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("out-data","").strip())
+except Exception: print("PERM-PROBE-FAILED")' || echo PERM-PROBE-FAILED)"
+echo "$PERM"
+echo "$PERM" | grep -q "CHUNK-STORE-READABLE" || die "the PBS service user (backup) cannot read the restored chunk store ($(echo "$PERM" | tr '\n' ' ')) — rsync ownership/mode normalization failed"
+log "restored datastore readable by the PBS service user (backup)"
 
 # ── Step 6: verify chunk-store integrity on the drill PBS ──
 log "verifying restored datastore integrity (index -> chunk walk)"
