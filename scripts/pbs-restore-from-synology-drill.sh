@@ -309,18 +309,57 @@ echo "$INTEGRITY" | grep -q "OK host/pve-config" || die "host/pve-config group f
 echo "$INTEGRITY" | grep -q "OK vm/201"          || die "vm/201 group failed integrity walk"
 log "chunk integrity verified for host/pve-config + vm/201 (all present groups listed above)"
 
-# ── Step 7: restore host/pve-config into a real pxar archive ──
-log "restoring host/pve-config latest snapshot to pxar (the actual DR proof)"
+# ── Step 7: restore host/pve-config into a real directory tree ──
+# 2026-10-02 RCA — this step had NEVER executed: every scheduled run since the
+# workflow landed died here, so the drill's actual DR proof (a real restore out
+# of the off-host mirror) was never once demonstrated. Four defects:
+#   (a) a backslash-escaped `&&` inside the double-quoted ssh payload reaches
+#       the guest as a literal backslash-ampersand token → bash syntax error
+#       before the first command runs. Inside double quotes `&` is already
+#       literal, so bare `&&` is correct (same class as the 2026-09-08
+#       integrity-walk fix one step above). CI now gates this class.
+#   (b) `--repository <datastore-path>` is not a valid repository form; the
+#       client wants `[[auth-id@]server[:port]:]datastore` → rc=255.
+#   (c) the archive name was hardcoded `root.pxar`, but the host-config backup
+#       publishes `host-config.mpxar` → "archive not found in manifest". The
+#       name is now discovered from the snapshot manifest.
+#   (d) a rebuilt PBS carries the DATA, not the identity: user.cfg/acl.cfg are
+#       empty, so no client can authenticate. The drill bootstraps a throwaway
+#       local admin (random password, never in Git) — the same recovery step an
+#       operator performs after a real rebuild. Bootstrapping the PVE→PBS
+#       backup token from the Git template stays an open DR gap.
+log "restoring host/pve-config latest snapshot (the actual DR proof)"
 RESTORE_OUT="$(ssh_pve "qm guest exec ${DRILL_VM_ID} --timeout 1200 -- bash -lc '
-latest=\"\$(find /srv/proxmox-backup-primary/datastore/host/pve-config -maxdepth 1 -mindepth 1 -type d | sort | while read -r d; do [[ -f \"\$d/index.json.blob\" ]] \&\& echo \"\$d\"; done | tail -1)
+set -e
+latest=\"\"
+while IFS= read -r d; do [[ -f \"\$d/index.json.blob\" ]] && latest=\"\$d\"; done < <(find /srv/proxmox-backup-primary/datastore/host/pve-config -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort)
+[[ -n \"\$latest\" ]] || { echo \"RESTORE-FAIL no complete host/pve-config snapshot in the mirrored datastore\"; exit 1; }
 snapshot=\"host/pve-config/\$(basename \"\$latest\")\"
-mkdir -p /root/drill-restore
-proxmox-backup-client restore \"\${snapshot}\" root.pxar --repository /srv/proxmox-backup-primary/datastore --keyfile /etc/proxmox-backup/encryption-key.json 2>/dev/null \
-  || proxmox-backup-client restore \"\${snapshot}\" root.pxar --repository /srv/proxmox-backup-primary/datastore 2>&1 | tail -3
-test -s /root/drill-restore/root.pxar \&\& echo RESTORE-PXAR-OK \&\& proxmox-backup-client list-files \"\${snapshot}\" --repository /srv/proxmox-backup-primary/datastore 2>/dev/null | head -5
-'" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("out-data","")); err=d.get("err-data","") or ""; err.strip() and print("[guest-stderr]", err[:400])')"
+for i in \$(seq 1 60); do if (exec 3<>/dev/tcp/127.0.0.1/8007) 2>/dev/null; then break; fi; sleep 2; done
+pw=\"\$(openssl rand -hex 16)\"
+proxmox-backup-manager user create drill-restore@pbs --password \"\$pw\" >/dev/null 2>&1 || proxmox-backup-manager user update drill-restore@pbs --password \"\$pw\" >/dev/null
+proxmox-backup-manager acl update /datastore/primary DatastoreAdmin --auth-id drill-restore@pbs >/dev/null
+fp=\"\$(openssl x509 -in /etc/proxmox-backup/proxy.pem -noout -fingerprint -sha256 | sed -e \"s/^.*=//\" -e \"s/://g\" | sed \"s/\(..\)/\1:/g;s/:\$//\")\"
+repo=\"drill-restore@pbs@127.0.0.1:primary\"
+# credentials must be exported BEFORE any client call: `snapshot files` needs
+# them too (2026-10-02: exporting them after the manifest probe made the probe
+# fail with "no password input mechanism available")
+export PBS_PASSWORD=\"\$pw\" PBS_FINGERPRINT=\"\$fp\"
+arch=\"\$(proxmox-backup-client snapshot files \"\$snapshot\" --repository \"\$repo\" | grep -oE \"[A-Za-z0-9._-]+\.(mpxar|pxar)\.didx\" | head -1)\"
+[[ -n \"\$arch\" ]] || { echo \"RESTORE-FAIL no pxar archive in the manifest of \$snapshot\"; exit 1; }
+arch=\"\${arch%.didx}\"
+keyopt=\"\"
+if [[ -f /etc/proxmox-backup/encryption-key.json ]]; then keyopt=\"--keyfile /etc/proxmox-backup/encryption-key.json\"; fi
+rm -rf /root/drill-restore; mkdir -p /root/drill-restore
+proxmox-backup-client restore \"\$snapshot\" \"\$arch\" /root/drill-restore --repository \"\$repo\" \$keyopt
+files=\"\$(find /root/drill-restore -type f | wc -l)\"
+[[ \"\$files\" -ge 10 ]] || { echo \"RESTORE-FAIL only \$files files restored from \$snapshot\"; exit 1; }
+[[ -d /root/drill-restore/etc ]] || { echo \"RESTORE-FAIL restored tree has no etc/\"; exit 1; }
+echo \"RESTORE-PXAR-OK archive=\$arch files=\$files snapshot=\$snapshot\"
+if [[ -s /root/drill-restore/reports/manifest.txt ]]; then echo \"RESTORE-EVIDENCE\"; sed -n \"1,3p\" /root/drill-restore/reports/manifest.txt; fi
+'" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("out-data","")); err=d.get("err-data","") or ""; err.strip() and print("[guest-stderr]", err[:600])' || true)"
 echo "$RESTORE_OUT"
-echo "$RESTORE_OUT" | grep -q "RESTORE-PXAR-OK" || die "pxar restore did not produce an archive"
+echo "$RESTORE_OUT" | grep -q "RESTORE-PXAR-OK" || die "restore out of the mirrored datastore produced no restored tree — see [guest-stderr] above"
 
 # ── Step 8: destroy the drill (handled by the EXIT trap) ──
 if [[ "${1:-}" == "--keep" ]]; then
