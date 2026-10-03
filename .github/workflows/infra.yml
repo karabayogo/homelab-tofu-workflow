@@ -269,6 +269,19 @@ jobs:
           test -f "$SCRIPT_PATH"
           bash "$SCRIPT_PATH" --enforce
 
+      # 2026-10-04 RCA: the maintenance-window orchestrator was SIGKILLed
+      # mid-drain by its driver's 300s script timeout, stranding a cordon that
+      # nobody owned (it blinded ArgoCD for 3h54m and wedged every later run
+      # behind the single-flight gate). This gate keeps the fix in place: the
+      # orchestrator must claim its cordon with the label/heartbeat wire
+      # contract the in-cluster reaper reads, release it on every exit path, and
+      # keep REFUSE as rc=2 so a driver can tell "refused safely" from "failed".
+      - name: Enforce maintenance cordon ownership contract
+        run: |
+          GATE="scripts/k8s-kernel-maintenance-cordon-contract-gate.py"
+          test -f "$GATE"
+          python3 "$GATE" scripts/k8s-kernel-reboot-window.sh
+
   garage-vm-bootstrap-reconcile:
     needs: tofu
     if: needs.tofu.result == 'success'

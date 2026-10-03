@@ -43,6 +43,31 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONTRACT_JSON="${CONTRACT_JSON:-$REPO_ROOT/infrastructure/contracts/k8s-kernel-parity.json}"
 SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}"
 
+# --- Cordon ownership + heartbeat contract (2026-10-04 RCA) -----------------
+# A deliberate maintenance reboot cordons a node and can take ~3-20 minutes
+# (drain up to 600s + reboot + Ready wait up to 600s). If the process DRIVING it
+# dies mid-flight (driver script timeout, host reboot, ssh hang, OOM kill) the
+# cordon used to be stranded forever: the single-flight gate counted it and
+# refused every later run, so the node stayed out of the scheduler until an
+# operator noticed — imperative state with no owner, i.e. a pet.
+#
+# Contract: whoever cordons a node MUST (a) label it
+#   maintenance.k8s.workbench.io/reboot-window=true
+# and (b) keep the annotation
+#   maintenance.k8s.workbench.io/reboot-heartbeat=<RFC3339 UTC>
+# fresh (<= HEARTBEAT_INTERVAL) for as long as it owns the cordon, and MUST
+# release on every exit path (uncordon + remove label/annotations).
+# The in-cluster GitOps reaper (k8s-workbench,
+# infrastructure/k8s/maintenance-cordon-reaper) uncordons any maintenance-owned
+# node whose heartbeat is older than its TTL, so a hard-killed run self-heals.
+MAINT_LABEL_KEY="maintenance.k8s.workbench.io/reboot-window"
+MAINT_HEARTBEAT_ANNOTATION="maintenance.k8s.workbench.io/reboot-heartbeat"
+MAINT_OWNER_ANNOTATION="maintenance.k8s.workbench.io/reboot-owner"
+HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-20}"
+CORDONED_NODE=""
+HEARTBEAT_PID=""
+HEARTBEAT_STOP_FILE=""
+
 case "$MODE" in
   --list|--dry-run|--reboot) ;;
   *) echo "usage: $0 [--list|--dry-run|--reboot <node>]" >&2; exit 2 ;;
@@ -186,6 +211,64 @@ PY
   return 1
 }
 
+maint_heartbeat_write() {
+  local node="$1"
+  "$KUBECTL" label node "$node" "$MAINT_LABEL_KEY=true" --overwrite >/dev/null 2>&1 || true
+  "$KUBECTL" annotate node "$node" --overwrite \
+    "$MAINT_HEARTBEAT_ANNOTATION=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$MAINT_OWNER_ANNOTATION=$(hostname):$$" >/dev/null 2>&1 || true
+}
+
+maint_heartbeat_start() {
+  local node="$1"
+  # refresh on a background loop so a long drain / Ready-wait never looks stale
+  HEARTBEAT_STOP_FILE="$(mktemp -t maint-hb.XXXXXX)"
+  (
+    while [ ! -f "$HEARTBEAT_STOP_FILE" ]; do
+      maint_heartbeat_write "$node"
+      sleep "$HEARTBEAT_INTERVAL"
+    done
+  ) &
+  HEARTBEAT_PID=$!
+}
+
+maint_heartbeat_stop() {
+  [ -n "$HEARTBEAT_STOP_FILE" ] && rm -f "$HEARTBEAT_STOP_FILE"
+  if [ -n "$HEARTBEAT_PID" ]; then
+    kill "$HEARTBEAT_PID" 2>/dev/null || true
+    wait "$HEARTBEAT_PID" 2>/dev/null || true
+  fi
+  HEARTBEAT_PID=""
+  HEARTBEAT_STOP_FILE=""
+}
+
+# Idempotent: uncordon + drop ownership so the reaper and the single-flight gate
+# both see a released node. Safe to call from any exit path.
+maint_release_cordon() {
+  local node="${1:-$CORDONED_NODE}"
+  [ -n "$node" ] || return 0
+  maint_heartbeat_stop
+  "$KUBECTL" uncordon "$node" >/dev/null 2>&1 || true
+  "$KUBECTL" label node "$node" "${MAINT_LABEL_KEY}-" >/dev/null 2>&1 || true
+  "$KUBECTL" annotate node "$node" \
+    "${MAINT_HEARTBEAT_ANNOTATION}-" "${MAINT_OWNER_ANNOTATION}-" >/dev/null 2>&1 || true
+  echo "  released cordon ownership on $node (uncordoned, maintenance label/annotations cleared)"
+  CORDONED_NODE=""
+}
+
+# Every exit path releases the cordon. A hard kill (SIGKILL) cannot run this —
+# that is exactly the case the in-cluster reaper covers.
+cleanup_on_exit() {
+  local rc=$?
+  trap - EXIT
+  if [ -n "$CORDONED_NODE" ]; then
+    echo "  ABORT: this run owns the cordon on $CORDONED_NODE and is exiting (rc=$rc) before finishing — uncordoning now"
+    maint_release_cordon "$CORDONED_NODE"
+  fi
+  exit "$rc"
+}
+trap cleanup_on_exit EXIT
+
 run_reboot() {
   local node="$1"
   echo "== maintenance-window reboot: $node =="
@@ -205,7 +288,10 @@ run_reboot() {
   node_ready "$node" || { echo "REFUSE: $node not Ready"; exit 2; }
   local running staged cc ck
   cc=$(cordoned_count)
-  [ "$cc" -eq 0 ] || { echo "REFUSE: ${cc} node(s) already SchedulingDisabled — single-flight"; exit 2; }
+  [ "$cc" -eq 0 ] || {
+    echo "REFUSE: ${cc} node(s) already SchedulingDisabled — single-flight. A maintenance-owned cordon (label ${MAINT_LABEL_KEY}=true) whose heartbeat is stale is uncordoned automatically by the in-cluster maintenance-cordon-reaper; a cordon placed by hand must be cleared by hand."
+    exit 2
+  }
   ck=$(contract_node_kernel "$node")
   echo "  contract_kernel=$ck"
   running=$(node_running_kernel "$node")
@@ -247,12 +333,15 @@ run_reboot() {
 
   echo "  cordoning $node ..."
   "$KUBECTL" cordon "$node"
+  CORDONED_NODE="$node"
+  maint_heartbeat_start "$node"
+  echo "  claimed cordon ownership (label ${MAINT_LABEL_KEY}=true, heartbeat every ${HEARTBEAT_INTERVAL}s; the in-cluster reaper is the backstop if this process is killed)"
 
   echo "  draining $node (longhorn-safe: --ignore-daemonsets --delete-emptydir-data) ..."
   if ! "$KUBECTL" drain "$node" --ignore-daemonsets --delete-emptydir-data \
        --grace-period=180 --timeout=600s --force --disable-eviction=false 2>&1; then
-    echo "  DRAIN FAILED — uncordoning, aborting"
-    "$KUBECTL" uncordon "$node" 2>/dev/null || true
+    echo "  DRAIN FAILED — releasing cordon, aborting"
+    maint_release_cordon "$node"
     exit 1
   fi
 
@@ -260,13 +349,17 @@ run_reboot() {
   ensure_saved_entry_points_to_contract "$node" "$ck" || echo "  WARN: couldn't re-point GRUB; checking boot-pin still holds"
 
   echo "  rebooting $node ..."
-  reboot_node_via_ssh "$node" || { echo "  REBOOT ISSUE — manual check needed; uncordoning"; "$KUBECTL" uncordon "$node" 2>/dev/null || true; exit 1; }
+  reboot_node_via_ssh "$node" || { echo "  REBOOT ISSUE — manual check needed; releasing cordon"; maint_release_cordon "$node"; exit 1; }
 
   echo "  waiting for Ready (max 600s) ..."
   local waited=0
   until node_ready "$node"; do
     sleep 10; waited=$((waited+10))
-    [ "$waited" -ge 600 ] && { echo "  TIMEOUT waiting Ready — manual check needed"; exit 1; }
+    [ "$waited" -ge 600 ] && {
+      echo "  TIMEOUT waiting Ready — releasing cordon (a NotReady node is protected by its taint; the reaper is the backstop), manual check needed"
+      maint_release_cordon "$node"
+      exit 1
+    }
   done
 
   local new_kernel
@@ -276,7 +369,7 @@ run_reboot() {
     echo "  WARN: kernel ${new_kernel} != contract ${ck} — uncordoning anyway, parity check will re-flag"
   fi
 
-  "$KUBECTL" uncordon "$node"
+  maint_release_cordon "$node"
   echo "== $node reboot complete, uncordoned =="
 }
 
