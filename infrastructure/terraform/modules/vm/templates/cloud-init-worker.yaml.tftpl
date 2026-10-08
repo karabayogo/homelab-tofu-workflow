@@ -110,6 +110,22 @@ write_files:
         echo "[longhorn-setup] $MOUNT_POINT already mounted"
       fi
       
+      # Grow the ext4 filesystem when the backing disk was resized (cattle).
+      # 2026-10-08: Longhorn's data disk on k8s-worker2 reached 26.1% available of
+      # 97.9 GiB — one longhorn storage-minimal-available-percentage (25%) away
+      # from being marked unschedulable, which is when replicas stop being
+      # rebuildable there. Cause: nothing inside the guest ever followed a
+      # `data_disk_size_gb` increase — the module resizes the block device, the
+      # filesystem keeps its old size and the disk refills. This is the same
+      # idempotent block the garage template uses (no-op when fs_bytes >= disk_bytes),
+      # so a future resize in homelab-tofu-workflow self-heals on the next boot.
+      disk_bytes=$(blockdev --getsize64 "$DISK" 2>/dev/null || echo 0)
+      fs_bytes=$(dumpe2fs -h "$DISK" 2>/dev/null | awk '/Block count:/ {blocks=$3} /Block size:/ {size=$3} END { if (blocks && size) print blocks * size; else print 0 }')
+      if [ "$${fs_bytes:-0}" -gt 0 ] && [ "$disk_bytes" -gt "$fs_bytes" ]; then
+        echo "[longhorn-setup] Growing ext4 filesystem on $DISK: $${fs_bytes} -> $${disk_bytes} bytes"
+        resize2fs "$DISK" || echo "[longhorn-setup] WARN: resize2fs failed; disk stays at previous size"
+      fi
+
       # Add to fstab if not present
       if ! grep -q "$MOUNT_POINT" /etc/fstab; then
         echo "[longhorn-setup] Adding $MOUNT_POINT to fstab..."
