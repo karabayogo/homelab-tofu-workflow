@@ -450,7 +450,15 @@ module "k8s_worker2" {
   cpu_cores         = 4
   cpu_units         = 1024
   os_disk_size_gb   = 80
-  data_disk_size_gb = 100
+  # Longhorn data disk. Raised 100 -> 160 on 2026-10-08: with node-exporter
+  # enabled (k8s-workbench 4e2e9ce) the disk became measurable for the first
+  # time and sat at 26.1% available (25.6 GiB of 97.9 GiB) — one point above
+  # longhorn's storage-minimal-available-percentage floor of 25%, below which
+  # Longhorn marks the disk unschedulable and replicas can no longer be rebuilt
+  # there. The disk only fills because nothing inside the guest grew the ext4
+  # filesystem after a size change; the worker cloud-init template now does that
+  # idempotently, so this resize propagates without a reboot.
+  data_disk_size_gb = 160
   vm_storage        = "local-zfs"
   # 2026-09-14 RCA: migrate off ZFS zvol event path to file-backed storage.
   data_storage      = "bulkpool-dir"
